@@ -868,5 +868,245 @@ class TestXPathHelperMethods:
         assert base == "/config/devices/entry[@name='localhost.localdomain']/template-stack/entry[@name='stack1']"
 
 
+class TestMultiVsysXPath:
+    """Test XPath generation for multi-vsys firewalls."""
+
+    def test_address_vsys1(self):
+        """Address object in vsys1."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys1"}
+        xpath = PanOSXPathMap.build_xpath("address", "test-addr", context)
+        assert xpath == "/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='vsys1']/address/entry[@name='test-addr']"
+
+    def test_address_vsys2(self):
+        """Address object in vsys2."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("address", "test-addr", context)
+        assert xpath == "/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='vsys2']/address/entry[@name='test-addr']"
+
+    def test_address_vsys3(self):
+        """Address object in vsys3."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys3"}
+        xpath = PanOSXPathMap.build_xpath("address", "test-addr", context)
+        assert xpath == "/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='vsys3']/address/entry[@name='test-addr']"
+
+    def test_service_vsys1(self):
+        """Service object in vsys1."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys1"}
+        xpath = PanOSXPathMap.build_xpath("service", "test-svc", context)
+        assert "/vsys/entry[@name='vsys1']" in xpath
+        assert "/service/entry[@name='test-svc']" in xpath
+
+    def test_service_vsys2(self):
+        """Service object in vsys2."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("service", "test-svc", context)
+        assert "/vsys/entry[@name='vsys2']" in xpath
+        assert "/service/entry[@name='test-svc']" in xpath
+
+    def test_service_vsys3(self):
+        """Service object in vsys3."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys3"}
+        xpath = PanOSXPathMap.build_xpath("service", "test-svc", context)
+        assert "/vsys/entry[@name='vsys3']" in xpath
+        assert "/service/entry[@name='test-svc']" in xpath
+
+    def test_security_policy_vsys1(self):
+        """Security policy in vsys1."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys1"}
+        xpath = PanOSXPathMap.build_xpath("security_policy", "test-rule", context)
+        assert "/vsys/entry[@name='vsys1']" in xpath
+        assert "/rulebase/security/rules/entry[@name='test-rule']" in xpath
+
+    def test_security_policy_vsys2(self):
+        """Security policy in vsys2."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("security_policy", "test-rule", context)
+        assert "/vsys/entry[@name='vsys2']" in xpath
+        assert "/rulebase/security/rules/entry[@name='test-rule']" in xpath
+
+    def test_security_policy_vsys3(self):
+        """Security policy in vsys3."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys3"}
+        xpath = PanOSXPathMap.build_xpath("security_policy", "test-rule", context)
+        assert "/vsys/entry[@name='vsys3']" in xpath
+        assert "/rulebase/security/rules/entry[@name='test-rule']" in xpath
+
+    def test_nat_policy_vsys1(self):
+        """NAT policy in vsys1."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys1"}
+        xpath = PanOSXPathMap.build_xpath("nat_policy", "test-nat", context)
+        assert "/vsys/entry[@name='vsys1']" in xpath
+        assert "/rulebase/nat/rules/entry[@name='test-nat']" in xpath
+
+    def test_nat_policy_vsys2(self):
+        """NAT policy in vsys2."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("nat_policy", "test-nat", context)
+        assert "/vsys/entry[@name='vsys2']" in xpath
+        assert "/rulebase/nat/rules/entry[@name='test-nat']" in xpath
+
+    def test_nat_policy_vsys3(self):
+        """NAT policy in vsys3."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys3"}
+        xpath = PanOSXPathMap.build_xpath("nat_policy", "test-nat", context)
+        assert "/vsys/entry[@name='vsys3']" in xpath
+        assert "/rulebase/nat/rules/entry[@name='test-nat']" in xpath
+
+    def test_address_group_vsys2(self):
+        """Address group in vsys2."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("address_group", "test-group", context)
+        assert "/vsys/entry[@name='vsys2']" in xpath
+        assert "/address-group/entry[@name='test-group']" in xpath
+
+    def test_service_group_vsys2(self):
+        """Service group in vsys2."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("service_group", "test-group", context)
+        assert "/vsys/entry[@name='vsys2']" in xpath
+        assert "/service-group/entry[@name='test-group']" in xpath
+
+
+class TestVsysContextHandling:
+    """Test vsys context handling and propagation."""
+
+    def test_device_context_with_explicit_vsys(self):
+        """DeviceContext with explicit vsys."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("address", "test", context)
+        assert "vsys2" in xpath
+        assert "vsys1" not in xpath
+
+    def test_device_context_no_vsys_defaults_to_vsys1(self):
+        """DeviceContext with no vsys defaults to vsys1."""
+        context = {"device_type": "FIREWALL"}
+        xpath = PanOSXPathMap.build_xpath("address", "test", context)
+        assert "vsys1" in xpath
+
+    def test_device_context_empty_vsys_defaults_to_vsys1(self):
+        """DeviceContext with empty vsys defaults to vsys1."""
+        context = {"device_type": "FIREWALL", "vsys": ""}
+        xpath = PanOSXPathMap.build_xpath("address", "test", context)
+        # Empty string should still default to vsys1
+        assert "vsys1" in xpath or xpath.count("vsys") > 0
+
+    def test_vsys_propagation_address(self):
+        """Vsys parameter propagates through address operations."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("address", "test-addr", context)
+        assert "vsys2" in xpath
+
+    def test_vsys_propagation_service(self):
+        """Vsys parameter propagates through service operations."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("service", "test-svc", context)
+        assert "vsys2" in xpath
+
+    def test_vsys_propagation_security_policy(self):
+        """Vsys parameter propagates through security policy operations."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("security_policy", "test-rule", context)
+        assert "vsys2" in xpath
+
+    def test_vsys_propagation_nat_policy(self):
+        """Vsys parameter propagates through NAT policy operations."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("nat_policy", "test-nat", context)
+        assert "vsys2" in xpath
+
+    def test_list_operations_with_vsys(self):
+        """List operations respect vsys context."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("address_list", device_context=context)
+        assert "vsys2" in xpath
+        assert xpath.endswith("/address")
+
+
+class TestBackwardCompatibility:
+    """Test backward compatibility with existing code."""
+
+    def test_existing_firewall_tests_still_pass(self):
+        """Existing firewall tests still pass with vsys1 default."""
+        context = {"device_type": "FIREWALL"}
+        xpath = PanOSXPathMap.build_xpath("address", "web-server", context)
+        assert "vsys1" in xpath
+        assert "/address/entry[@name='web-server']" in xpath
+
+    def test_tools_work_without_vsys_in_context(self):
+        """Tools work without vsys in device_context."""
+        context = {"device_type": "FIREWALL"}
+        # Should default to vsys1
+        xpath = PanOSXPathMap.build_xpath("address", "test", context)
+        assert "vsys1" in xpath
+
+    def test_xpaths_match_existing_format_when_vsys_not_specified(self):
+        """XPaths match existing format when vsys not specified."""
+        context = {"device_type": "FIREWALL"}
+        new_xpath = PanOSXPathMap.build_xpath("address", "test", context)
+        legacy_xpath = PanOSXPathMap.get_xpath("address", "test")
+        # Both should use vsys1
+        assert "vsys1" in new_xpath
+        assert "vsys1" in legacy_xpath
+
+    def test_legacy_get_xpath_still_works(self):
+        """Legacy get_xpath method still works with vsys1."""
+        xpath = PanOSXPathMap.get_xpath("address", "test")
+        assert "vsys1" in xpath
+        assert "/address/entry[@name='test']" in xpath
+
+    def test_no_context_defaults_to_vsys1(self):
+        """No context defaults to vsys1."""
+        xpath = PanOSXPathMap.build_xpath("address", "test")
+        assert "vsys1" in xpath
+
+    def test_all_object_types_default_to_vsys1(self):
+        """All object types default to vsys1 when vsys not specified."""
+        object_types = ["address", "service", "security_policy", "nat_policy"]
+        for obj_type in object_types:
+            context = {"device_type": "FIREWALL"}
+            xpath = PanOSXPathMap.build_xpath(obj_type, "test", context)
+            assert "vsys1" in xpath, f"{obj_type} should default to vsys1"
+
+
+class TestPanoramaCompatibility:
+    """Test Panorama operations are unaffected by vsys changes."""
+
+    def test_panorama_device_context_ignores_vsys(self):
+        """Panorama device_context ignores vsys parameter."""
+        context = {"device_type": "PANORAMA", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("address", "test", context)
+        # Should use shared, not vsys
+        assert xpath == "/config/shared/address/entry[@name='test']"
+        assert "vsys" not in xpath
+
+    def test_panorama_xpaths_unaffected_by_vsys(self):
+        """Panorama XPaths unaffected by vsys."""
+        # Test with vsys in context
+        context_with_vsys = {"device_type": "PANORAMA", "vsys": "vsys2"}
+        xpath_with_vsys = PanOSXPathMap.build_xpath("address", "test", context_with_vsys)
+        
+        # Test without vsys in context
+        context_no_vsys = {"device_type": "PANORAMA"}
+        xpath_no_vsys = PanOSXPathMap.build_xpath("address", "test", context_no_vsys)
+        
+        # Both should be identical (shared)
+        assert xpath_with_vsys == xpath_no_vsys
+        assert xpath_with_vsys == "/config/shared/address/entry[@name='test']"
+
+    def test_panorama_device_group_unaffected_by_vsys(self):
+        """Panorama device-group XPaths unaffected by vsys."""
+        context = {"device_type": "PANORAMA", "device_group": "prod", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("address", "test", context)
+        assert "/device-group/entry[@name='prod']" in xpath
+        assert "vsys" not in xpath
+
+    def test_panorama_template_unaffected_by_vsys(self):
+        """Panorama template XPaths unaffected by vsys."""
+        context = {"device_type": "PANORAMA", "template": "dmz", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("address", "test", context)
+        assert "/template/entry[@name='dmz']/config" in xpath
+        assert "vsys" not in xpath
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

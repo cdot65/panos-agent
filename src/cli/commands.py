@@ -5,6 +5,7 @@ Typer-based CLI for running autonomous and deterministic modes.
 
 import asyncio
 import logging
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -330,6 +331,11 @@ def run(
         "--recursion-limit",
         help="Maximum workflow steps (default: 25 autonomous, 50 deterministic)",
     ),
+    vsys: str = typer.Option(
+        "vsys1",
+        "--vsys",
+        help="Virtual system for firewall operations (vsys1, vsys2, etc.)",
+    ),
 ):
     """Run PAN-OS agent with specified mode and prompt.
 
@@ -359,6 +365,9 @@ def run(
         panos-agent run -p "long_workflow" -m deterministic --recursion-limit 100
     """
     setup_logging(log_level)
+
+    # Store vsys in environment for client to use
+    os.environ["PANOS_AGENT_VSYS"] = vsys
 
     # Resolve model name from alias
     model_name = resolve_model_name(model)

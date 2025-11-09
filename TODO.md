@@ -1163,12 +1163,12 @@ PAN-OS-specific error handling.
 
 ### Phase 2 Progress (12-18h)
 
-- [ ] 4. Store API (0 / 7h)
+- [x] 4. Store API (7 / 7h) ✅
 - [ ] 5. Runtime Context (0 / 3h)
 - [ ] 6. Recursion Handling (0 / 2.5h)
 - [ ] 7. Deployment Docs (0 / 1.5h)
 - [x] 8. Streaming UX (2.5 / 2.5h) ✅
-**Total Phase 2:** 2.5 / 16.5h (15% complete)
+**Total Phase 2:** 9.5 / 16.5h (58% complete)
 
 ### Phase 3 Progress (5-9h)
 
@@ -1177,8 +1177,8 @@ PAN-OS-specific error handling.
 - [ ] 11. Time-Travel CLI (0 / 2.5h)
 **Total Phase 3:** 0 / 5.5h
 
-**Grand Total:** 12.5 / 40.5h (~41 hours median estimate)
-**Completion:** 31% (Phase 1: Observability ✅, Error Handling & Resilience ✅ | Phase 2: Streaming UX ✅)
+**Grand Total:** 20 / 40.5h (~41 hours median estimate)
+**Completion:** 49% (Phase 1: Observability ✅, Error Handling & Resilience ✅ | Phase 2: Streaming UX ✅, Store API ✅)
 
 ---
 
@@ -1267,6 +1267,13 @@ Phase 3:
   - ✅ 3.1 Timeout Handling
   - ✅ 3.2 Retry Policies
   - ✅ 3.3 Resume Strategies + Enhanced Checkpointing
+- ✅ Phase 2, Task 4: Store API for Long-Term Memory (7h) - FULLY COMPLETE
+  - ✅ Memory store module with helper functions
+  - ✅ Namespace schema documentation (MEMORY_SCHEMA.md)
+  - ✅ Autonomous graph integration with memory context
+  - ✅ Deterministic graph integration with workflow history
+  - ✅ Unit tests (20/20 passing, 85% coverage)
+  - ✅ README documentation
 - ✅ Phase 2, Task 8: Streaming UX (2.5h) - FULLY COMPLETE
   - ✅ Autonomous mode streaming with real-time progress indicators
   - ✅ Deterministic mode streaming with step-by-step progress
@@ -1278,10 +1285,9 @@ Phase 3:
 
 **Next Steps (Recommended Priority):**
 
-1. **Phase 2, Task 4**: Store API for Long-Term Memory (6-8h) - MEDIUM priority
-2. **Phase 2, Task 5**: Runtime Context for LLM Configuration (2-4h) - MEDIUM priority
-3. **Phase 2, Task 6**: Recursion Limit Handling (2-3h) - MEDIUM priority
-4. **Phase 2, Task 7**: Deployment Documentation (1-2h) - MEDIUM priority
+1. **Phase 2, Task 5**: Runtime Context for LLM Configuration (2-4h) - MEDIUM priority
+2. **Phase 2, Task 6**: Recursion Limit Handling (2-3h) - MEDIUM priority (depends on Task 5)
+3. **Phase 2, Task 7**: Deployment Documentation (1-2h) - MEDIUM priority
 
 **Alternative:** Could return to Phase 1, Task 2 to fix remaining integration tests (low priority)
 
@@ -1290,4 +1296,4 @@ Phase 3:
 **Last Updated:** 2025-01-09
 **Total Tasks:** 60+ subtasks across 11 major tasks
 **Estimated Completion:** 33-51 hours (4-6 days for 1 developer, 2-3 days for 2 developers)
-**Current Progress:** 12.5h / 40.5h (31% complete)
+**Current Progress:** 20h / 40.5h (49% complete)

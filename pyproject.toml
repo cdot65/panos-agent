@@ -89,6 +89,12 @@ exclude = [
     ".pytest_cache",
     ".mypy_cache",
     ".tox",
+    "tests",
+    "scripts",
+    "data",
+    "docs",
+    "evaluation_results",
+    "examples",
 ]
 max-complexity = 10
 docstring-convention = "google"

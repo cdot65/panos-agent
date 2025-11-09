@@ -5,11 +5,11 @@ while ensuring no false positives (legitimate data is not masked).
 """
 
 import re
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from src.core.anonymizers import get_panos_anonymizer, create_panos_tracer
+from src.core.anonymizers import create_panos_tracer, get_panos_anonymizer
 
 
 class TestGetPanosAnonymizer:
@@ -49,9 +49,13 @@ class TestGetPanosAnonymizer:
             result = anonymizer(test_str)
             assert "<password>" in result, f"Password in '{test_str}' should be masked"
             # Verify original password value is not in result
-            password_value = re.search(r"['\"]?([^\s'\"]+)['\"]?$", test_str.split(":")[-1].split("=")[-1])
+            password_value = re.search(
+                r"['\"]?([^\s'\"]+)['\"]?$", test_str.split(":")[-1].split("=")[-1]
+            )
             if password_value:
-                assert password_value.group(1) not in result, f"Password value should not appear in result"
+                assert (
+                    password_value.group(1) not in result
+                ), "Password value should not appear in result"
 
     def test_anonymizer_masks_xml_passwords(self):
         """Test that XML password elements are masked."""
@@ -92,7 +96,9 @@ class TestPanosApiKeyPattern:
             # Only test the last one if it's actually under 40
             if suffix_length >= 40:
                 continue  # Skip this test case if it's actually long enough to match
-            assert not re.search(pattern, key), f"Pattern should NOT match invalid key: {key[:30]}... (length after prefix: {suffix_length})"
+            assert not re.search(
+                pattern, key
+            ), f"Pattern should NOT match invalid key: {key[:30]}... (length after prefix: {suffix_length})"
 
     def test_panos_key_in_context(self):
         """Test PAN-OS key pattern in realistic context."""
@@ -104,7 +110,9 @@ class TestPanosApiKeyPattern:
         ]
 
         for test_str in test_strings:
-            assert re.search(pattern, test_str), f"Pattern should match key in context: {test_str[:50]}..."
+            assert re.search(
+                pattern, test_str
+            ), f"Pattern should match key in context: {test_str[:50]}..."
 
 
 class TestAnthropicApiKeyPattern:
@@ -138,7 +146,9 @@ class TestAnthropicApiKeyPattern:
             # Only test the last one if it's actually under 40
             if suffix_length >= 40:
                 continue  # Skip this test case if it's actually long enough to match
-            assert not re.search(pattern, key), f"Pattern should NOT match invalid key: {key[:30]}... (length after prefix: {suffix_length})"
+            assert not re.search(
+                pattern, key
+            ), f"Pattern should NOT match invalid key: {key[:30]}... (length after prefix: {suffix_length})"
 
     def test_anthropic_key_in_context(self):
         """Test Anthropic key pattern in realistic context."""
@@ -150,7 +160,7 @@ class TestAnthropicApiKeyPattern:
         ]
 
         for test_str in test_strings:
-            assert re.search(pattern, test_str), f"Pattern should match key in context"
+            assert re.search(pattern, test_str), "Pattern should match key in context"
 
 
 class TestPasswordFieldPattern:
@@ -200,11 +210,14 @@ class TestPasswordFieldPattern:
 
         for input_str, expected in test_cases:
             result = re.sub(pattern, replace, input_str, flags=re.IGNORECASE)
-            assert "<password>" in result, f"Replacement should contain '<password>' for '{input_str}'"
+            assert (
+                "<password>" in result
+            ), f"Replacement should contain '<password>' for '{input_str}'"
             # Verify original password value is not in result
-            password_value = input_str.split(":")[-1].split("=")[-1].strip(' "\'')
-            assert password_value not in result or password_value == "<password>", \
-                f"Password value '{password_value}' should be masked in result"
+            password_value = input_str.split(":")[-1].split("=")[-1].strip(" \"'")
+            assert (
+                password_value not in result or password_value == "<password>"
+            ), f"Password value '{password_value}' should be masked in result"
 
 
 class TestXmlPasswordPattern:
@@ -240,8 +253,9 @@ class TestXmlPasswordPattern:
             # Verify original password value is not in result
             password_match = re.search(r"<password>(.*?)</password>", input_str)
             if password_match and password_match.group(1):
-                assert password_match.group(1) not in result, \
-                    f"Password value should not appear in result"
+                assert (
+                    password_match.group(1) not in result
+                ), "Password value should not appear in result"
 
     def test_xml_password_in_context(self):
         """Test XML password pattern in realistic PAN-OS XML context."""
@@ -273,9 +287,13 @@ class TestFalsePositives:
         for test_str in legitimate_strings:
             result = anonymizer(test_str)
             # Should not contain masked placeholder (unless it's a real key)
-            if "LUFRPT" in test_str and len([c for c in test_str if c.isalnum() or c in "+/="]) < 40:
-                assert "<panos-api-key>" not in result or test_str == result, \
-                    f"Legitimate reference should not be masked: '{test_str}'"
+            if (
+                "LUFRPT" in test_str
+                and len([c for c in test_str if c.isalnum() or c in "+/="]) < 40
+            ):
+                assert (
+                    "<panos-api-key>" not in result or test_str == result
+                ), f"Legitimate reference should not be masked: '{test_str}'"
 
     def test_legitimate_password_references(self):
         """Test that legitimate password references are not masked."""
@@ -308,8 +326,9 @@ class TestFalsePositives:
         for test_str in legitimate_strings:
             result = anonymizer(test_str)
             # Should not mask these (they're not <password>...</password>)
-            assert "<redacted>" not in result or "<password>" not in test_str, \
-                f"Legitimate XML reference should not be masked: '{test_str}'"
+            assert (
+                "<redacted>" not in result or "<password>" not in test_str
+            ), f"Legitimate XML reference should not be masked: '{test_str}'"
 
 
 class TestCombinedPatterns:
@@ -335,16 +354,16 @@ class TestCombinedPatterns:
 
         # Verify original sensitive values are not in result
         assert "LUFRPT14MW5xOEo1R09KVlBZNnpnemh0VHRBNnE9OGNHNjh0VDM4Ug==" not in result
-        assert "sk-ant-api03-1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV" not in result
+        assert (
+            "sk-ant-api03-1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV" not in result
+        )
         assert "admin123" not in result or "password='admin123'" not in result
         assert "secret" not in result or "<password>secret</password>" not in result
 
     def test_multiple_passwords_in_string(self):
         """Test that multiple password fields are all masked."""
         anonymizer = get_panos_anonymizer()
-        test_string = (
-            'password="secret1", passwd="secret2", pwd="secret3"'
-        )
+        test_string = 'password="secret1", passwd="secret2", pwd="secret3"'
 
         result = anonymizer(test_string)
 
@@ -405,7 +424,9 @@ class TestRealWorldTraceSamples:
 
         # Verify Anthropic API key is masked
         assert "<anthropic-api-key>" in result
-        assert "sk-ant-api03-1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV" not in result
+        assert (
+            "sk-ant-api03-1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV" not in result
+        )
 
         # Verify password field is masked
         assert "<password>" in result
@@ -438,7 +459,9 @@ class TestRealWorldTraceSamples:
 
         # Verify original values are not present
         assert "LUFRPT14MW5xOEo1R09KVlBZNnpnemh0VHRBNnE9OGNHNjh0VDM4Ug==" not in result
-        assert "sk-ant-api03-1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV" not in result
+        assert (
+            "sk-ant-api03-1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV" not in result
+        )
         assert "super_secret" not in result
         assert "another_secret" not in result
         assert "xml_secret" not in result

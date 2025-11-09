@@ -11,9 +11,9 @@ Patterns covered:
 - XML password elements
 """
 
+from langchain_core.tracers.langchain import LangChainTracer
 from langsmith import Client
 from langsmith.anonymizer import create_anonymizer
-from langchain_core.tracers.langchain import LangChainTracer
 
 from src.core.config import get_settings
 

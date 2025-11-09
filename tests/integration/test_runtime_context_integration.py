@@ -1,11 +1,12 @@
 """Integration tests for runtime context across the full stack."""
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from langchain_core.messages import HumanMessage, AIMessage
+from unittest.mock import MagicMock, Mock, patch
 
-from src.core.config import AgentContext
+import pytest
+from langchain_core.messages import AIMessage, HumanMessage
+
 from src.autonomous_graph import create_autonomous_graph
+from src.core.config import AgentContext
 
 
 class TestRuntimeContextIntegration:
@@ -14,9 +15,7 @@ class TestRuntimeContextIntegration:
     @patch("src.autonomous_graph.ChatAnthropic")
     @patch("src.autonomous_graph.get_settings")
     @patch("src.autonomous_graph.get_firewall_operation_summary")
-    def test_graph_with_haiku_model(
-        self, mock_get_summary, mock_settings, mock_chat_anthropic
-    ):
+    def test_graph_with_haiku_model(self, mock_get_summary, mock_settings, mock_chat_anthropic):
         """Test full graph execution with Haiku model via runtime context."""
         # Setup mocks
         mock_settings.return_value.anthropic_api_key = "test-key"
@@ -58,9 +57,7 @@ class TestRuntimeContextIntegration:
     @patch("src.autonomous_graph.ChatAnthropic")
     @patch("src.autonomous_graph.get_settings")
     @patch("src.autonomous_graph.get_firewall_operation_summary")
-    def test_graph_with_opus_model(
-        self, mock_get_summary, mock_settings, mock_chat_anthropic
-    ):
+    def test_graph_with_opus_model(self, mock_get_summary, mock_settings, mock_chat_anthropic):
         """Test full graph execution with Opus model via runtime context."""
         # Setup mocks
         mock_settings.return_value.anthropic_api_key = "test-key"
@@ -198,9 +195,7 @@ class TestRuntimeContextDefaults:
     @patch("src.autonomous_graph.ChatAnthropic")
     @patch("src.autonomous_graph.get_settings")
     @patch("src.autonomous_graph.get_firewall_operation_summary")
-    def test_graph_with_default_context(
-        self, mock_get_summary, mock_settings, mock_chat_anthropic
-    ):
+    def test_graph_with_default_context(self, mock_get_summary, mock_settings, mock_chat_anthropic):
         """Test graph execution without explicit runtime context (uses defaults)."""
         # Setup mocks
         mock_settings.return_value.anthropic_api_key = "test-key"
@@ -327,4 +322,3 @@ class TestRuntimeContextModelComparison:
         assert haiku_call_kwargs["model"] == "claude-haiku-4-5"
         assert sonnet_call_kwargs["model"] == "claude-3-5-sonnet-20241022"
         assert haiku_call_kwargs["model"] != sonnet_call_kwargs["model"]
-

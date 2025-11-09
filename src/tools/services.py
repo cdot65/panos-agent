@@ -7,11 +7,12 @@ import uuid
 from typing import Optional
 
 from langchain_core.tools import tool
+
 from src.core.subgraphs.crud import create_crud_subgraph
 
 
 @tool
-def service_create(
+async def service_create(
     name: str,
     protocol: str,
     port: str,
@@ -50,19 +51,15 @@ def service_create(
         data["tag"] = tag
 
     try:
-        import asyncio
-
-        result = asyncio.run(
-            crud_graph.ainvoke(
-                {
-                    "operation_type": "create",
-                    "object_type": "service",
-                    "data": data,
-                    "object_name": name,
-                    "mode": mode,
-                },
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
-            )
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": "create",
+                "object_type": "service",
+                "data": data,
+                "object_name": name,
+                "mode": mode,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
         return result["message"]
     except Exception as e:
@@ -70,7 +67,7 @@ def service_create(
 
 
 @tool
-def service_read(name: str) -> str:
+async def service_read(name: str) -> str:
     """Read an existing service object from PAN-OS firewall.
 
     Args:
@@ -85,18 +82,14 @@ def service_read(name: str) -> str:
     crud_graph = create_crud_subgraph()
 
     try:
-        import asyncio
-
-        result = asyncio.run(
-            crud_graph.ainvoke(
-                {
-                    "operation_type": "read",
-                    "object_type": "service",
-                    "object_name": name,
-                    "data": None,
-                },
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
-            )
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": "read",
+                "object_type": "service",
+                "object_name": name,
+                "data": None,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
         return result["message"]
     except Exception as e:
@@ -104,7 +97,7 @@ def service_read(name: str) -> str:
 
 
 @tool
-def service_update(
+async def service_update(
     name: str,
     protocol: Optional[str] = None,
     port: Optional[str] = None,
@@ -142,18 +135,14 @@ def service_update(
         return "❌ Error: No fields provided for update"
 
     try:
-        import asyncio
-
-        result = asyncio.run(
-            crud_graph.ainvoke(
-                {
-                    "operation_type": "update",
-                    "object_type": "service",
-                    "object_name": name,
-                    "data": data,
-                },
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
-            )
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": "update",
+                "object_type": "service",
+                "object_name": name,
+                "data": data,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
         return result["message"]
     except Exception as e:
@@ -161,7 +150,7 @@ def service_update(
 
 
 @tool
-def service_delete(name: str, mode: str = "strict") -> str:
+async def service_delete(name: str, mode: str = "strict") -> str:
     """Delete a service object from PAN-OS firewall.
 
     Args:
@@ -178,19 +167,15 @@ def service_delete(name: str, mode: str = "strict") -> str:
     crud_graph = create_crud_subgraph()
 
     try:
-        import asyncio
-
-        result = asyncio.run(
-            crud_graph.ainvoke(
-                {
-                    "operation_type": "delete",
-                    "object_type": "service",
-                    "object_name": name,
-                    "data": None,
-                    "mode": mode,
-                },
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
-            )
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": "delete",
+                "object_type": "service",
+                "object_name": name,
+                "data": None,
+                "mode": mode,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
         return result["message"]
     except Exception as e:
@@ -198,7 +183,7 @@ def service_delete(name: str, mode: str = "strict") -> str:
 
 
 @tool
-def service_list() -> str:
+async def service_list() -> str:
     """List all service objects on PAN-OS firewall.
 
     Returns:
@@ -210,18 +195,14 @@ def service_list() -> str:
     crud_graph = create_crud_subgraph()
 
     try:
-        import asyncio
-
-        result = asyncio.run(
-            crud_graph.ainvoke(
-                {
-                    "operation_type": "list",
-                    "object_type": "service",
-                    "object_name": None,
-                    "data": None,
-                },
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
-            )
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": "list",
+                "object_type": "service",
+                "object_name": None,
+                "data": None,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
         return result["message"]
     except Exception as e:

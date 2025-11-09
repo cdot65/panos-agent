@@ -1,11 +1,11 @@
 """Unit tests for CLI model and temperature selection."""
 
-import pytest
-from typer.testing import CliRunner
 from unittest.mock import Mock, patch
 
-from src.cli.commands import app, resolve_model_name, MODEL_ALIASES
+import pytest
+from typer.testing import CliRunner
 
+from src.cli.commands import MODEL_ALIASES, app, resolve_model_name
 
 runner = CliRunner()
 

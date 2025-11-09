@@ -3,9 +3,9 @@
 Tests Store API helper functions for firewall config and workflow history.
 """
 
-import pytest
 from datetime import datetime
 
+import pytest
 from langgraph.store.memory import InMemoryStore
 
 from src.core.memory_store import (
@@ -68,7 +68,11 @@ class TestStoreFirewallConfig:
             "last_updated": "2025-01-09T11:00:00Z",
             "count": 20,
             "recent_operations": [
-                {"operation": "create", "object_name": "new-obj", "timestamp": "2025-01-09T11:00:00Z"}
+                {
+                    "operation": "create",
+                    "object_name": "new-obj",
+                    "timestamp": "2025-01-09T11:00:00Z",
+                }
             ],
         }
         store_firewall_config(hostname, config_type, new_data, store)
@@ -461,7 +465,11 @@ class TestGetFirewallOperationSummary:
                 "last_updated": "2025-01-09T10:00:00Z",
                 "count": 10,
                 "recent_operations": [
-                    {"operation": "create", "object_name": "addr-1", "timestamp": "2025-01-09T10:00:00Z"}
+                    {
+                        "operation": "create",
+                        "object_name": "addr-1",
+                        "timestamp": "2025-01-09T10:00:00Z",
+                    }
                 ],
             },
             store,
@@ -473,7 +481,11 @@ class TestGetFirewallOperationSummary:
                 "last_updated": "2025-01-09T10:00:00Z",
                 "count": 5,
                 "recent_operations": [
-                    {"operation": "create", "object_name": "svc-1", "timestamp": "2025-01-09T11:00:00Z"}
+                    {
+                        "operation": "create",
+                        "object_name": "svc-1",
+                        "timestamp": "2025-01-09T11:00:00Z",
+                    }
                 ],
             },
             store,
@@ -499,8 +511,16 @@ class TestGetFirewallOperationSummary:
                 "last_updated": "2025-01-09T10:00:00Z",
                 "count": 2,
                 "recent_operations": [
-                    {"operation": "create", "object_name": "old", "timestamp": "2025-01-09T09:00:00Z"},
-                    {"operation": "create", "object_name": "new", "timestamp": "2025-01-09T10:00:00Z"},
+                    {
+                        "operation": "create",
+                        "object_name": "old",
+                        "timestamp": "2025-01-09T09:00:00Z",
+                    },
+                    {
+                        "operation": "create",
+                        "object_name": "new",
+                        "timestamp": "2025-01-09T10:00:00Z",
+                    },
                 ],
             },
             store,
@@ -570,4 +590,3 @@ class TestGetFirewallOperationSummary:
 
         assert summary1["total_objects"] == 10
         assert summary2["total_objects"] == 20
-

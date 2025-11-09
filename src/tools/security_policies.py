@@ -4,16 +4,16 @@ Full CRUD operations for security policy rule management.
 Uses CRUD subgraph for async operations.
 """
 
-import asyncio
 import uuid
 from typing import Optional
 
 from langchain_core.tools import tool
+
 from src.core.subgraphs.crud import create_crud_subgraph
 
 
 @tool
-def security_policy_list() -> str:
+async def security_policy_list() -> str:
     """List all security policy rules on PAN-OS firewall.
 
     Returns:
@@ -25,16 +25,14 @@ def security_policy_list() -> str:
     crud_graph = create_crud_subgraph()
 
     try:
-        result = asyncio.run(
-            crud_graph.ainvoke(
-                {
-                    "operation_type": "list",
-                    "object_type": "security_policy",
-                    "object_name": None,
-                    "data": None,
-                },
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
-            )
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": "list",
+                "object_type": "security_policy",
+                "object_name": None,
+                "data": None,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
         return result["message"]
     except Exception as e:
@@ -42,7 +40,7 @@ def security_policy_list() -> str:
 
 
 @tool
-def security_policy_read(name: str) -> str:
+async def security_policy_read(name: str) -> str:
     """Read an existing security policy rule from PAN-OS firewall.
 
     Args:
@@ -57,16 +55,14 @@ def security_policy_read(name: str) -> str:
     crud_graph = create_crud_subgraph()
 
     try:
-        result = asyncio.run(
-            crud_graph.ainvoke(
-                {
-                    "operation_type": "read",
-                    "object_type": "security_policy",
-                    "object_name": name,
-                    "data": None,
-                },
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
-            )
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": "read",
+                "object_type": "security_policy",
+                "object_name": name,
+                "data": None,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
         return result["message"]
     except Exception as e:
@@ -74,7 +70,7 @@ def security_policy_read(name: str) -> str:
 
 
 @tool
-def security_policy_create(
+async def security_policy_create(
     name: str,
     fromzone: list[str],
     tozone: list[str],
@@ -134,16 +130,14 @@ def security_policy_create(
         data["tag"] = tag
 
     try:
-        result = asyncio.run(
-            crud_graph.ainvoke(
-                {
-                    "operation_type": "create",
-                    "object_type": "security_policy",
-                    "data": data,
-                    "object_name": name,
-                },
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
-            )
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": "create",
+                "object_type": "security_policy",
+                "data": data,
+                "object_name": name,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
         return result["message"]
     except Exception as e:
@@ -151,7 +145,7 @@ def security_policy_create(
 
 
 @tool
-def security_policy_update(
+async def security_policy_update(
     name: str,
     fromzone: Optional[list[str]] = None,
     tozone: Optional[list[str]] = None,
@@ -209,16 +203,14 @@ def security_policy_update(
         return "❌ Error: No fields provided for update"
 
     try:
-        result = asyncio.run(
-            crud_graph.ainvoke(
-                {
-                    "operation_type": "update",
-                    "object_type": "security_policy",
-                    "object_name": name,
-                    "data": data,
-                },
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
-            )
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": "update",
+                "object_type": "security_policy",
+                "object_name": name,
+                "data": data,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
         return result["message"]
     except Exception as e:
@@ -226,7 +218,7 @@ def security_policy_update(
 
 
 @tool
-def security_policy_delete(name: str) -> str:
+async def security_policy_delete(name: str) -> str:
     """Delete a security policy rule from PAN-OS firewall.
 
     Args:
@@ -241,16 +233,14 @@ def security_policy_delete(name: str) -> str:
     crud_graph = create_crud_subgraph()
 
     try:
-        result = asyncio.run(
-            crud_graph.ainvoke(
-                {
-                    "operation_type": "delete",
-                    "object_type": "security_policy",
-                    "object_name": name,
-                    "data": None,
-                },
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
-            )
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": "delete",
+                "object_type": "security_policy",
+                "object_name": name,
+                "data": None,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
         return result["message"]
     except Exception as e:

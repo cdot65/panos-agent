@@ -7,8 +7,8 @@ based on actual PAN-OS 11.1.4 configuration structure.
 import pytest
 
 from src.core.panos_xpath_map import (
-    PanOSXPathMap,
     VALIDATION_RULES,
+    PanOSXPathMap,
     _validate_fqdn,
     _validate_ip_netmask,
     _validate_ip_range,
@@ -23,7 +23,7 @@ class TestXPathGeneration:
     def test_xpath_for_address_object(self):
         """Test XPath for specific address object."""
         xpath = PanOSXPathMap.get_xpath("address", "web-server")
-        
+
         assert "localhost.localdomain" in xpath
         assert "vsys1" in xpath
         assert "address" in xpath
@@ -32,7 +32,7 @@ class TestXPathGeneration:
     def test_xpath_for_address_list(self):
         """Test XPath for listing all addresses."""
         xpath = PanOSXPathMap.get_xpath("address_list")
-        
+
         assert "localhost.localdomain" in xpath
         assert "vsys1" in xpath
         assert "address" in xpath
@@ -42,21 +42,21 @@ class TestXPathGeneration:
     def test_xpath_for_service(self):
         """Test XPath for service object."""
         xpath = PanOSXPathMap.get_xpath("service", "web-http")
-        
+
         assert "service" in xpath
         assert "entry[@name='web-http']" in xpath
 
     def test_xpath_for_security_policy(self):
         """Test XPath for security policy."""
         xpath = PanOSXPathMap.get_xpath("security_policy", "allow-web")
-        
+
         assert "rulebase/security/rules" in xpath
         assert "entry[@name='allow-web']" in xpath
 
     def test_xpath_for_nat_policy(self):
         """Test XPath for NAT policy."""
         xpath = PanOSXPathMap.get_xpath("nat_policy", "outbound-nat")
-        
+
         assert "rulebase/nat/rules" in xpath
         assert "entry[@name='outbound-nat']" in xpath
 
@@ -75,7 +75,7 @@ class TestXPathGeneration:
             "security_policy",
             "nat_policy",
         ]
-        
+
         for obj_type in object_types:
             # Should not raise
             xpath = PanOSXPathMap.get_xpath(obj_type, "test")
@@ -98,7 +98,7 @@ class TestNameValidation:
             "test-123",
             "web.server.1",
         ]
-        
+
         for name in valid_names:
             is_valid, error = PanOSXPathMap.validate_object_name(name)
             assert is_valid, f"Name '{name}' should be valid, got error: {error}"
@@ -107,7 +107,7 @@ class TestNameValidation:
     def test_invalid_name_empty(self):
         """Test empty name is invalid."""
         is_valid, error = PanOSXPathMap.validate_object_name("")
-        
+
         assert not is_valid
         assert "empty" in error.lower()
 
@@ -115,7 +115,7 @@ class TestNameValidation:
         """Test name exceeding 63 characters is invalid."""
         long_name = "a" * 64
         is_valid, error = PanOSXPathMap.validate_object_name(long_name)
-        
+
         assert not is_valid
         assert "63" in error
         assert "64" in error
@@ -123,21 +123,21 @@ class TestNameValidation:
     def test_invalid_name_starts_with_underscore(self):
         """Test name starting with underscore is invalid."""
         is_valid, error = PanOSXPathMap.validate_object_name("_server")
-        
+
         assert not is_valid
         assert "underscore" in error.lower()
 
     def test_invalid_name_starts_with_space(self):
         """Test name starting with space is invalid."""
         is_valid, error = PanOSXPathMap.validate_object_name(" server")
-        
+
         assert not is_valid
         assert "space" in error.lower()
 
     def test_invalid_name_consecutive_spaces(self):
         """Test name with consecutive spaces is invalid."""
         is_valid, error = PanOSXPathMap.validate_object_name("web  server")
-        
+
         assert not is_valid
         assert "consecutive" in error.lower()
 
@@ -150,7 +150,7 @@ class TestNameValidation:
             "server%1",
             "web&server",
         ]
-        
+
         for name in invalid_names:
             is_valid, error = PanOSXPathMap.validate_object_name(name)
             assert not is_valid, f"Name '{name}' should be invalid"
@@ -170,7 +170,7 @@ class TestIPValidation:
             "1.1.1.1",
             "255.255.255.255",
         ]
-        
+
         for ip in valid_ips:
             is_valid, error = _validate_ip_netmask(ip)
             assert is_valid, f"IP '{ip}' should be valid, got error: {error}"
@@ -184,7 +184,7 @@ class TestIPValidation:
             "not-an-ip",
             "192.168.1.1/33",  # Invalid CIDR
         ]
-        
+
         for ip in invalid_ips:
             is_valid, error = _validate_ip_netmask(ip)
             assert not is_valid, f"IP '{ip}' should be invalid"
@@ -195,7 +195,7 @@ class TestIPValidation:
             "192.168.1.1-192.168.1.100",
             "10.0.0.1-10.0.0.255",
         ]
-        
+
         for ip_range in valid_ranges:
             is_valid, error = _validate_ip_range(ip_range)
             assert is_valid, f"Range '{ip_range}' should be valid, got error: {error}"
@@ -207,7 +207,7 @@ class TestIPValidation:
             "192.168.1.1-999.0.0.0",  # Invalid end IP
             "not-a-range",
         ]
-        
+
         for ip_range in invalid_ranges:
             is_valid, error = _validate_ip_range(ip_range)
             assert not is_valid, f"Range '{ip_range}' should be invalid"
@@ -225,7 +225,7 @@ class TestFQDNValidation:
             "a.b.c.d.e.f",
             "test-server.example.com",
         ]
-        
+
         for fqdn in valid_fqdns:
             is_valid, error = _validate_fqdn(fqdn)
             assert is_valid, f"FQDN '{fqdn}' should be valid, got error: {error}"
@@ -238,7 +238,7 @@ class TestFQDNValidation:
             "192.168.1.1",  # IP address
             "not a domain",  # Spaces
         ]
-        
+
         for fqdn in invalid_fqdns:
             is_valid, error = _validate_fqdn(fqdn)
             assert not is_valid, f"FQDN '{fqdn}' should be invalid"
@@ -259,7 +259,7 @@ class TestPortValidation:
             "80,443,8080",  # Multiple
             "8080-8090,9000-9100",  # Multiple ranges
         ]
-        
+
         for port in valid_ports:
             is_valid, error = _validate_port(port)
             assert is_valid, f"Port '{port}' should be valid, got error: {error}"
@@ -273,7 +273,7 @@ class TestPortValidation:
             "not-a-port",
             "-80",  # Negative
         ]
-        
+
         for port in invalid_ports:
             is_valid, error = _validate_port(port)
             assert not is_valid, f"Port '{port}' should be invalid"
@@ -291,7 +291,7 @@ class TestObjectDataValidation:
             "description": "Web server",
             "tag": ["Web", "Production"],
         }
-        
+
         is_valid, error = validate_object_data("address", data)
         assert is_valid
         assert error is None
@@ -301,7 +301,7 @@ class TestObjectDataValidation:
         data = {
             "description": "Missing name and value",
         }
-        
+
         is_valid, error = validate_object_data("address", data)
         assert not is_valid
         assert "required" in error.lower()
@@ -314,7 +314,7 @@ class TestObjectDataValidation:
             "tcp_port": "8080",
             "description": "HTTP service",
         }
-        
+
         is_valid, error = validate_object_data("service", data)
         assert is_valid
         assert error is None
@@ -325,7 +325,7 @@ class TestObjectDataValidation:
             "name": "test-service",
             "protocol": "invalid",  # Not tcp or udp
         }
-        
+
         is_valid, error = validate_object_data("service", data)
         assert not is_valid
         assert "protocol" in error.lower()
@@ -342,7 +342,7 @@ class TestObjectDataValidation:
             "application": ["web-browsing", "ssl"],
             "action": "allow",
         }
-        
+
         is_valid, error = validate_object_data("security_policy", data)
         assert is_valid
         assert error is None
@@ -359,7 +359,7 @@ class TestObjectDataValidation:
             "application": ["any"],
             "action": "invalid-action",  # Not allow/deny/drop
         }
-        
+
         is_valid, error = validate_object_data("security_policy", data)
         assert not is_valid
         assert "action" in error.lower()
@@ -374,7 +374,7 @@ class TestObjectDataValidation:
             "destination": ["any"],
             "service": "any",
         }
-        
+
         is_valid, error = validate_object_data("nat_policy", data)
         assert is_valid
         assert error is None
@@ -382,7 +382,7 @@ class TestObjectDataValidation:
     def test_validate_unknown_object_type(self):
         """Test validation with unknown object type."""
         data = {"name": "test"}
-        
+
         # Should return True (no validation rules)
         is_valid, error = validate_object_data("unknown_type", data)
         assert is_valid
@@ -394,7 +394,7 @@ class TestStructureDefinitions:
     def test_get_structure_for_address(self):
         """Test getting structure definition for address."""
         structure = PanOSXPathMap.get_structure("address")
-        
+
         assert structure
         assert "root" in structure
         assert "fields" in structure
@@ -405,7 +405,7 @@ class TestStructureDefinitions:
     def test_get_structure_for_service(self):
         """Test getting structure definition for service."""
         structure = PanOSXPathMap.get_structure("service")
-        
+
         assert structure
         assert structure["root"] == "entry"
         assert "protocol" in structure["fields"]
@@ -413,7 +413,7 @@ class TestStructureDefinitions:
     def test_get_structure_for_unknown_type(self):
         """Test getting structure for unknown type returns empty."""
         structure = PanOSXPathMap.get_structure("unknown_type")
-        
+
         assert structure == {}
 
     def test_all_object_types_have_structures(self):
@@ -426,7 +426,7 @@ class TestStructureDefinitions:
             "security_policy",
             "nat_policy",
         ]
-        
+
         for obj_type in object_types:
             structure = PanOSXPathMap.get_structure(obj_type)
             assert structure, f"No structure for {obj_type}"
@@ -445,7 +445,7 @@ class TestValidationRules:
     def test_address_validation_rules(self):
         """Test address object validation rules."""
         rules = VALIDATION_RULES.get("address")
-        
+
         assert rules
         assert "required_fields" in rules
         assert "name" in rules["required_fields"]
@@ -454,7 +454,7 @@ class TestValidationRules:
     def test_service_validation_rules(self):
         """Test service object validation rules."""
         rules = VALIDATION_RULES.get("service")
-        
+
         assert rules
         assert "required_fields" in rules
         assert "valid_protocols" in rules
@@ -464,7 +464,7 @@ class TestValidationRules:
     def test_security_policy_validation_rules(self):
         """Test security policy validation rules."""
         rules = VALIDATION_RULES.get("security_policy")
-        
+
         assert rules
         assert "valid_actions" in rules
         assert "allow" in rules["valid_actions"]
@@ -478,7 +478,7 @@ class TestAPIXPath:
     def test_api_xpath_format(self):
         """Test that API XPath is correctly formatted."""
         xpath = PanOSXPathMap.get_api_xpath("address", "test")
-        
+
         assert xpath
         # API xpath should be same as regular xpath for now
         regular_xpath = PanOSXPathMap.get_xpath("address", "test")
@@ -487,7 +487,7 @@ class TestAPIXPath:
     def test_api_xpath_for_list(self):
         """Test API XPath for listing objects."""
         xpath = PanOSXPathMap.get_api_xpath("service_list")
-        
+
         assert xpath
         assert "service" in xpath
         # List path should end with object type, not a specific entry filter
@@ -496,4 +496,3 @@ class TestAPIXPath:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-

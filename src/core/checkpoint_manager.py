@@ -7,9 +7,9 @@ import logging
 import sqlite3
 from pathlib import Path
 
+import aiosqlite
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-import aiosqlite
 
 logger = logging.getLogger(__name__)
 

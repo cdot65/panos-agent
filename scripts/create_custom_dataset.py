@@ -89,9 +89,7 @@ def create_example_interactive() -> Dict[str, Any]:
     return example
 
 
-def extend_existing_dataset(
-    dataset_name: str, new_examples: List[Dict[str, Any]]
-) -> None:
+def extend_existing_dataset(dataset_name: str, new_examples: List[Dict[str, Any]]) -> None:
     """Extend existing LangSmith dataset with new examples.
 
     Args:
@@ -100,9 +98,7 @@ def extend_existing_dataset(
     """
     settings = get_settings()
     if not settings.langsmith_api_key:
-        raise ValueError(
-            "LangSmith API key not configured. Set LANGSMITH_API_KEY in .env"
-        )
+        raise ValueError("LangSmith API key not configured. Set LANGSMITH_API_KEY in .env")
 
     from langsmith import Client
 
@@ -116,14 +112,16 @@ def extend_existing_dataset(
 
     for ex in new_examples:
         inputs_list.append(ex["input"])
-        outputs_list.append({
-            "expected_tool": ex.get("expected_tool"),
-            "expected_tools": ex.get("expected_tools"),
-            "expected_steps": ex.get("expected_steps"),
-            "expected_behavior": ex.get("expected_behavior"),
-            "category": ex.get("category", "unknown"),
-            "mode": ex.get("mode", "autonomous"),
-        })
+        outputs_list.append(
+            {
+                "expected_tool": ex.get("expected_tool"),
+                "expected_tools": ex.get("expected_tools"),
+                "expected_steps": ex.get("expected_steps"),
+                "expected_behavior": ex.get("expected_behavior"),
+                "category": ex.get("category", "unknown"),
+                "mode": ex.get("mode", "autonomous"),
+            }
+        )
         metadata_list.append({"name": ex.get("name", "")})
 
     # Add examples to existing dataset
@@ -139,9 +137,7 @@ def extend_existing_dataset(
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(
-        description="Create or extend LangSmith evaluation datasets"
-    )
+    parser = argparse.ArgumentParser(description="Create or extend LangSmith evaluation datasets")
     parser.add_argument(
         "--name",
         required=True,
@@ -197,14 +193,10 @@ def main():
     if args.extend:
         extend_existing_dataset(args.extend, examples)
     else:
-        description = (
-            args.description
-            or f"Custom evaluation dataset: {args.name}"
-        )
+        description = args.description or f"Custom evaluation dataset: {args.name}"
         create_langsmith_dataset(args.name, examples, description=description)
         print(f"\n✅ Created dataset '{args.name}' with {len(examples)} examples")
 
 
 if __name__ == "__main__":
     main()
-

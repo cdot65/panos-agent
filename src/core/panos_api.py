@@ -5,8 +5,7 @@ using httpx for HTTP operations and lxml for XML parsing/generation.
 """
 
 import logging
-from typing import Any, Optional
-from urllib.parse import urlencode
+from typing import Optional
 
 import httpx
 from lxml import etree
@@ -241,9 +240,7 @@ async def api_request(
         msg_elem = root.find(".//msg")
         message = msg_elem.text if msg_elem is not None else None
 
-        return APIResponse(
-            status=status, code=code, message=message, xml_element=root
-        )
+        return APIResponse(status=status, code=code, message=message, xml_element=root)
 
     except httpx.HTTPError as e:
         logger.error(f"HTTP error: {e}")
@@ -278,9 +275,7 @@ async def get_config(xpath: str, client: httpx.AsyncClient) -> etree._Element:
     return result
 
 
-async def set_config(
-    xpath: str, element: etree._Element, client: httpx.AsyncClient
-) -> APIResponse:
+async def set_config(xpath: str, element: etree._Element, client: httpx.AsyncClient) -> APIResponse:
     """Set configuration at specified XPath (create new).
 
     Args:
@@ -470,4 +465,3 @@ async def operational_command(cmd: str, client: httpx.AsyncClient) -> etree._Ele
 
     # Return full response element for parsing by caller
     return response.xml_element
-

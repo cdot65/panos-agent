@@ -15,6 +15,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
+
 from src.core.checkpoint_manager import get_checkpointer
 from src.core.config import AgentContext, get_settings
 from src.core.memory_store import (
@@ -88,23 +89,17 @@ async def call_agent(
     memory_context = ""
     try:
         # Get firewall operation summary
-        summary = get_firewall_operation_summary(
-            hostname=settings.panos_hostname, store=store
-        )
+        summary = get_firewall_operation_summary(hostname=settings.panos_hostname, store=store)
 
         if summary and summary.get("total_objects", 0) > 0:
             # Build memory context string
             context_parts = []
-            context_parts.append(
-                f"**Firewall Memory Context ({settings.panos_hostname}):**"
-            )
+            context_parts.append(f"**Firewall Memory Context ({settings.panos_hostname}):**")
             context_parts.append(f"- Total objects: {summary['total_objects']}")
 
             # Add config type breakdown
             if summary.get("config_types"):
-                type_breakdown = ", ".join(
-                    f"{k}: {v}" for k, v in summary["config_types"].items()
-                )
+                type_breakdown = ", ".join(f"{k}: {v}" for k, v in summary["config_types"].items())
                 context_parts.append(f"- Object types: {type_breakdown}")
 
             # Add recent operations (last 5)
@@ -140,9 +135,7 @@ async def call_agent(
     llm_with_tools = llm.bind_tools(ALL_TOOLS)
 
     # Prepend system message
-    messages = [SystemMessage(content=system_prompt)] + list[BaseMessage](
-        state["messages"]
-    )
+    messages = [SystemMessage(content=system_prompt)] + list[BaseMessage](state["messages"])
 
     # Get response (ainvoke for async)
     response = await llm_with_tools.ainvoke(messages)
@@ -287,9 +280,7 @@ async def store_operations(state: AutonomousState, *, store: BaseStore) -> Auton
                     },
                     store=store,
                 )
-                logger.debug(
-                    f"Stored {len(operations)} operations for {config_type} on {hostname}"
-                )
+                logger.debug(f"Stored {len(operations)} operations for {config_type} on {hostname}")
 
     except Exception as e:
         logger.warning(f"Failed to store operations in memory: {e}")
@@ -297,7 +288,7 @@ async def store_operations(state: AutonomousState, *, store: BaseStore) -> Auton
     return state
 
 
-def create_autonomous_graph(store: BaseStore | None = None, checkpointer = None) -> StateGraph:
+def create_autonomous_graph(store: BaseStore | None = None, checkpointer=None) -> StateGraph:
     """Create autonomous ReAct agent graph.
 
     Args:

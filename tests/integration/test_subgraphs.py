@@ -11,8 +11,8 @@ import pytest
 import respx
 from httpx import Response
 
-from src.core.subgraphs.crud import create_crud_subgraph
 from src.core.subgraphs.commit import create_commit_subgraph
+from src.core.subgraphs.crud import create_crud_subgraph
 
 
 class TestCRUDSubgraphIntegration:
@@ -101,8 +101,8 @@ class TestCRUDSubgraphIntegration:
                     200,
                     content=b'<response status="success" code="19">'
                     b'<result><address><entry name="test-server">'
-                    b'<ip-netmask>10.1.1.1</ip-netmask>'
-                    b'</entry></address></result>'
+                    b"<ip-netmask>10.1.1.1</ip-netmask>"
+                    b"</entry></address></result>"
                     b"</response>",
                 )
             )
@@ -197,7 +197,7 @@ class TestCRUDSubgraphIntegration:
                     200,
                     content=b'<response status="success" code="19">'
                     b'<result><address><entry name="test-server">'
-                    b'<ip-netmask>10.1.1.1</ip-netmask>'
+                    b"<ip-netmask>10.1.1.1</ip-netmask>"
                     b"</entry></address></result>"
                     b"</response>",
                 )

@@ -1,13 +1,13 @@
 """Unit tests for deterministic graph nodes."""
 
+from unittest.mock import Mock, patch
+
 import pytest
 from langchain_core.messages import HumanMessage
-from unittest.mock import Mock, patch
 from langgraph.graph import END
 
-from src.deterministic_graph import load_workflow_definition, execute_workflow, route_after_load
 from src.core.state_schemas import DeterministicState
-
+from src.deterministic_graph import execute_workflow, load_workflow_definition, route_after_load
 
 # Sample workflow definitions for testing
 VALID_WORKFLOW = {
@@ -169,15 +169,17 @@ class TestExecuteWorkflow:
     async def test_execute_workflow_success(self, mock_create_subgraph):
         """Test successful workflow execution."""
         from unittest.mock import AsyncMock
-        
+
         # Mock subgraph with async invoke
         mock_subgraph = Mock()
-        mock_subgraph.ainvoke = AsyncMock(return_value={
-            "step_outputs": [
-                {"step": "Create address", "status": "success", "result": "✅ Created"}
-            ],
-            "message": "✅ Workflow complete",
-        })
+        mock_subgraph.ainvoke = AsyncMock(
+            return_value={
+                "step_outputs": [
+                    {"step": "Create address", "status": "success", "result": "✅ Created"}
+                ],
+                "message": "✅ Workflow complete",
+            }
+        )
         mock_create_subgraph.return_value = mock_subgraph
 
         state: DeterministicState = {
@@ -194,7 +196,7 @@ class TestExecuteWorkflow:
 
         # Mock store
         mock_store = Mock()
-        
+
         result = await execute_workflow(state, store=mock_store)
 
         # Assertions
@@ -210,7 +212,7 @@ class TestExecuteWorkflow:
     async def test_execute_workflow_with_error(self, mock_create_subgraph):
         """Test workflow execution with error."""
         from unittest.mock import AsyncMock
-        
+
         # Mock subgraph that raises exception
         mock_subgraph = Mock()
         mock_subgraph.ainvoke = AsyncMock(side_effect=Exception("Test error"))
@@ -228,7 +230,7 @@ class TestExecuteWorkflow:
 
         # Mock store
         mock_store = Mock()
-        
+
         result = await execute_workflow(state, store=mock_store)
 
         # Should set error flags
@@ -252,7 +254,7 @@ class TestExecuteWorkflow:
 
         # Mock store
         mock_store = Mock()
-        
+
         result = await execute_workflow(state, store=mock_store)
 
         # Should return state unchanged

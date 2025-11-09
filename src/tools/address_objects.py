@@ -13,7 +13,7 @@ from src.core.subgraphs.crud import create_crud_subgraph
 
 
 @tool
-def address_create(
+async def address_create(
     name: str,
     value: str,
     address_type: str = "ip-netmask",
@@ -52,19 +52,15 @@ def address_create(
         data["tag"] = tag
 
     try:
-        import asyncio
-
-        result = asyncio.run(
-            crud_graph.ainvoke(
-                {
-                    "operation_type": "create",
-                    "object_type": "address",
-                    "data": data,
-                    "object_name": name,
-                    "mode": mode,
-                },
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
-            )
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": "create",
+                "object_type": "address",
+                "data": data,
+                "object_name": name,
+                "mode": mode,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
         return result["message"]
     except Exception as e:
@@ -72,7 +68,7 @@ def address_create(
 
 
 @tool
-def address_read(name: str) -> str:
+async def address_read(name: str) -> str:
     """Read an existing address object from PAN-OS firewall.
 
     Args:
@@ -87,18 +83,14 @@ def address_read(name: str) -> str:
     crud_graph = create_crud_subgraph()
 
     try:
-        import asyncio
-
-        result = asyncio.run(
-            crud_graph.ainvoke(
-                {
-                    "operation_type": "read",
-                    "object_type": "address",
-                    "object_name": name,
-                    "data": None,
-                },
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
-            )
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": "read",
+                "object_type": "address",
+                "object_name": name,
+                "data": None,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
         return result["message"]
     except Exception as e:
@@ -106,7 +98,7 @@ def address_read(name: str) -> str:
 
 
 @tool
-def address_update(
+async def address_update(
     name: str,
     value: Optional[str] = None,
     description: Optional[str] = None,
@@ -140,18 +132,14 @@ def address_update(
         return "❌ Error: No fields provided for update"
 
     try:
-        import asyncio
-
-        result = asyncio.run(
-            crud_graph.ainvoke(
-                {
-                    "operation_type": "update",
-                    "object_type": "address",
-                    "object_name": name,
-                    "data": data,
-                },
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
-            )
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": "update",
+                "object_type": "address",
+                "object_name": name,
+                "data": data,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
         return result["message"]
     except Exception as e:
@@ -159,7 +147,7 @@ def address_update(
 
 
 @tool
-def address_delete(name: str, mode: str = "strict") -> str:
+async def address_delete(name: str, mode: str = "strict") -> str:
     """Delete an address object from PAN-OS firewall.
 
     Args:
@@ -176,19 +164,15 @@ def address_delete(name: str, mode: str = "strict") -> str:
     crud_graph = create_crud_subgraph()
 
     try:
-        import asyncio
-
-        result = asyncio.run(
-            crud_graph.ainvoke(
-                {
-                    "operation_type": "delete",
-                    "object_type": "address",
-                    "object_name": name,
-                    "data": None,
-                    "mode": mode,
-                },
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
-            )
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": "delete",
+                "object_type": "address",
+                "object_name": name,
+                "data": None,
+                "mode": mode,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
         return result["message"]
     except Exception as e:
@@ -196,7 +180,7 @@ def address_delete(name: str, mode: str = "strict") -> str:
 
 
 @tool
-def address_list() -> str:
+async def address_list() -> str:
     """List all address objects on PAN-OS firewall.
 
     Returns:
@@ -208,18 +192,14 @@ def address_list() -> str:
     crud_graph = create_crud_subgraph()
 
     try:
-        import asyncio
-
-        result = asyncio.run(
-            crud_graph.ainvoke(
-                {
-                    "operation_type": "list",
-                    "object_type": "address",
-                    "object_name": None,
-                    "data": None,
-                },
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
-            )
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": "list",
+                "object_type": "address",
+                "object_name": None,
+                "data": None,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
         return result["message"]
     except Exception as e:

@@ -3,6 +3,7 @@
 Typer-based CLI for running autonomous and deterministic modes.
 """
 
+import asyncio
 import logging
 import sys
 from datetime import datetime
@@ -15,6 +16,7 @@ from langchain_core.messages import HumanMessage
 from rich.console import Console
 from rich.logging import RichHandler
 
+from src.cli.checkpoint_commands import app as checkpoint_app
 from src.core.config import TIMEOUT_AUTONOMOUS, TIMEOUT_DETERMINISTIC
 
 # Load .env file into os.environ at module import
@@ -83,6 +85,213 @@ def setup_logging(log_level: str = "INFO"):
     )
 
 
+async def run_autonomous_async(
+    prompt: str,
+    thread_id: str,
+    model_name: str,
+    temperature: float,
+    no_stream: bool,
+):
+    """Async helper for autonomous mode execution."""
+    from src.autonomous_graph import create_autonomous_graph
+    from src.core.checkpoint_manager import get_async_checkpointer
+    from src.core.client import close_panos_client
+    from src.core.config import get_settings
+
+    settings = get_settings()
+
+    # Create graph with async checkpointer
+    checkpointer = await get_async_checkpointer()
+
+    try:
+        graph = create_autonomous_graph(checkpointer=checkpointer)
+
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+            },
+            "timeout": TIMEOUT_AUTONOMOUS,
+            "tags": ["panos-agent", "autonomous", "v0.1.0"],
+            "metadata": {
+                "mode": "autonomous",
+                "thread_id": thread_id,
+                "user_prompt_length": len(prompt),
+                "timestamp": datetime.now().isoformat(),
+                "firewall_host": settings.panos_hostname,
+                "model_name": model_name,
+                "temperature": temperature,
+            },
+        }
+
+        # Runtime context for model/temperature override
+        context = {
+            "model_name": model_name,
+            "temperature": temperature,
+        }
+
+        if no_stream:
+            # Legacy invoke mode for CI/CD
+            result = await graph.ainvoke(
+                {"messages": [HumanMessage(content=prompt)]},
+                config=config,
+                context=context,
+            )
+            last_message = result["messages"][-1]
+            console.print("\n[bold green]Response:[/bold green]")
+            console.print(last_message.content)
+        else:
+            # Streaming mode with real-time progress
+            result = None
+            async for chunk in graph.astream(
+                {"messages": [HumanMessage(content=prompt)]},
+                config=config,
+                context=context,
+                stream_mode="updates",
+            ):
+                # chunk is dict: {node_name: node_output}
+                for node_name, node_output in chunk.items():
+                    if node_name == "agent":
+                        console.print("[yellow]🤖 Agent thinking...[/yellow]")
+                    elif node_name == "tools":
+                        console.print("[cyan]🔧 Executing tools...[/cyan]")
+                    # Keep last result
+                    result = node_output
+
+            # Print final response
+            if result and "messages" in result:
+                last_message = result["messages"][-1]
+                console.print("\n[bold green]✅ Complete[/bold green]")
+                console.print("\n[bold green]Response:[/bold green]")
+                console.print(last_message.content)
+
+        console.print(f"\n[dim]Thread ID: {thread_id}[/dim]")
+    finally:
+        # Clean up async resources
+        # Suppress RuntimeError from event loop closing during cleanup
+        try:
+            await close_panos_client()
+        except RuntimeError as e:
+            if "Event loop is closed" not in str(e):
+                raise
+
+        if checkpointer and hasattr(checkpointer, "conn"):
+            try:
+                await checkpointer.conn.close()
+            except RuntimeError as e:
+                if "Event loop is closed" not in str(e):
+                    raise
+
+
+async def run_deterministic_async(
+    prompt: str,
+    thread_id: str,
+    no_stream: bool,
+):
+    """Async helper for deterministic mode execution."""
+    from src.core.checkpoint_manager import get_async_checkpointer
+    from src.core.client import close_panos_client
+    from src.deterministic_graph import create_deterministic_graph
+
+    # Create graph with async checkpointer
+    checkpointer = await get_async_checkpointer()
+
+    try:
+        graph = create_deterministic_graph(checkpointer=checkpointer)
+
+        # Format prompt as workflow invocation
+        # Expected format: "workflow: <workflow_name>"
+        if not prompt.lower().startswith("workflow:"):
+            # Assume prompt is workflow name
+            formatted_prompt = f"workflow: {prompt}"
+        else:
+            formatted_prompt = prompt
+
+        config = {
+            "configurable": {"thread_id": thread_id},
+            "timeout": TIMEOUT_DETERMINISTIC,
+            "tags": ["panos-agent", "deterministic", prompt, "v0.1.0"],
+            "metadata": {
+                "mode": "deterministic",
+                "workflow": prompt,  # Original workflow name
+                "thread_id": thread_id,
+                "timestamp": datetime.now().isoformat(),
+            },
+        }
+
+        if no_stream:
+            # Legacy invoke mode for CI/CD
+            result = await graph.ainvoke(
+                {"messages": [HumanMessage(content=formatted_prompt)]},
+                config=config,
+            )
+            last_message = result["messages"][-1]
+            console.print("\n[bold green]Response:[/bold green]")
+            console.print(
+                last_message.content if isinstance(last_message, dict) else last_message.content
+            )
+        else:
+            # Streaming mode with step-by-step progress
+            result = None
+            step_count = 0
+            async for chunk in graph.astream(
+                {"messages": [HumanMessage(content=formatted_prompt)]},
+                config=config,
+                stream_mode="updates",
+            ):
+                # chunk is dict: {node_name: node_output}
+                for node_name, node_output in chunk.items():
+                    if node_name == "load_workflow":
+                        console.print("[yellow]📋 Loading workflow...[/yellow]")
+                    elif node_name == "execute_step":
+                        # Track step progress
+                        if "current_step" in node_output:
+                            step_count = node_output["current_step"]
+                            total_steps = len(node_output.get("workflow_steps", []))
+                            current_step_desc = (
+                                node_output.get("workflow_steps", [])[step_count - 1].get(
+                                    "description", "Executing step"
+                                )
+                                if step_count <= total_steps
+                                else "Executing step"
+                            )
+                            console.print(
+                                f"[cyan]🔧 Step {step_count}/{total_steps}: "
+                                f"{current_step_desc}...[/cyan]"
+                            )
+                    elif node_name == "finalize_workflow":
+                        console.print("[yellow]📝 Finalizing workflow...[/yellow]")
+                    # Keep last result
+                    result = node_output
+
+            # Print final response
+            if result and "messages" in result:
+                last_message = result["messages"][-1]
+                console.print("\n[bold green]✅ Workflow Complete[/bold green]")
+                console.print("\n[bold green]Response:[/bold green]")
+                console.print(
+                    last_message.get("content", "")
+                    if isinstance(last_message, dict)
+                    else last_message.content
+                )
+
+        console.print(f"\n[dim]Thread ID: {thread_id}[/dim]")
+    finally:
+        # Clean up async resources
+        # Suppress RuntimeError from event loop closing during cleanup
+        try:
+            await close_panos_client()
+        except RuntimeError as e:
+            if "Event loop is closed" not in str(e):
+                raise
+
+        if checkpointer and hasattr(checkpointer, "conn"):
+            try:
+                await checkpointer.conn.close()
+            except RuntimeError as e:
+                if "Event loop is closed" not in str(e):
+                    raise
+
+
 @app.command()
 def run(
     prompt: str = typer.Option(..., "--prompt", "-p", help="User prompt for the agent"),
@@ -97,7 +306,7 @@ def run(
         False, "--no-stream", help="Disable streaming output (use for CI/CD)"
     ),
     model: str = typer.Option(
-        "sonnet",
+        "haiku",
         "--model",
         help="LLM model (sonnet, opus, haiku, or full model name)",
     ),
@@ -143,169 +352,28 @@ def run(
     console.print(f"[dim]Model: {model_name} (temp={temperature})[/dim]\n")
 
     try:
+        import uuid
+
+        tid = thread_id or str(uuid.uuid4())
+
         if mode == "autonomous":
-            from src.autonomous_graph import create_autonomous_graph
-
-            # Get firewall hostname from settings
-            from src.core.config import get_settings
-
-            settings = get_settings()
-
-            graph = create_autonomous_graph()
-
-            # Use provided thread_id or generate new one
-            import uuid
-
-            tid = thread_id or str(uuid.uuid4())
-
-            config = {
-                "configurable": {
-                    "thread_id": tid,
-                },
-                "timeout": TIMEOUT_AUTONOMOUS,
-                "tags": ["panos-agent", "autonomous", "v0.1.0"],
-                "metadata": {
-                    "mode": "autonomous",
-                    "thread_id": tid,
-                    "user_prompt_length": len(prompt),
-                    "timestamp": datetime.now().isoformat(),
-                    "firewall_host": settings.panos_hostname,
-                    "model_name": model_name,
-                    "temperature": temperature,
-                },
-            }
-
-            # Runtime context for model/temperature override
-            context = {
-                "model_name": model_name,
-                "temperature": temperature,
-            }
-
-            if no_stream:
-                # Legacy invoke mode for CI/CD
-                result = graph.invoke(
-                    {"messages": [HumanMessage(content=prompt)]},
-                    config=config,
-                    context=context,
+            asyncio.run(
+                run_autonomous_async(
+                    prompt=prompt,
+                    thread_id=tid,
+                    model_name=model_name,
+                    temperature=temperature,
+                    no_stream=no_stream,
                 )
-                last_message = result["messages"][-1]
-                console.print("\n[bold green]Response:[/bold green]")
-                console.print(last_message.content)
-            else:
-                # Streaming mode with real-time progress
-                result = None
-                for chunk in graph.stream(
-                    {"messages": [HumanMessage(content=prompt)]},
-                    config=config,
-                    context=context,
-                    stream_mode="updates",
-                ):
-                    # chunk is dict: {node_name: node_output}
-                    for node_name, node_output in chunk.items():
-                        if node_name == "agent":
-                            console.print("[yellow]🤖 Agent thinking...[/yellow]")
-                        elif node_name == "tools":
-                            console.print("[cyan]🔧 Executing tools...[/cyan]")
-                        # Keep last result
-                        result = node_output
-
-                # Print final response
-                if result and "messages" in result:
-                    last_message = result["messages"][-1]
-                    console.print("\n[bold green]✅ Complete[/bold green]")
-                    console.print("\n[bold green]Response:[/bold green]")
-                    console.print(last_message.content)
-
-            console.print(f"\n[dim]Thread ID: {tid}[/dim]")
-
+            )
         elif mode == "deterministic":
-            from src.deterministic_graph import create_deterministic_graph
-
-            graph = create_deterministic_graph()
-
-            # Use provided thread_id or generate new one
-            import uuid
-
-            tid = thread_id or str(uuid.uuid4())
-
-            # Format prompt as workflow invocation
-            # Expected format: "workflow: <workflow_name>"
-            if not prompt.lower().startswith("workflow:"):
-                # Assume prompt is workflow name
-                formatted_prompt = f"workflow: {prompt}"
-            else:
-                formatted_prompt = prompt
-
-            config = {
-                "configurable": {"thread_id": tid},
-                "timeout": TIMEOUT_DETERMINISTIC,
-                "tags": ["panos-agent", "deterministic", prompt, "v0.1.0"],
-                "metadata": {
-                    "mode": "deterministic",
-                    "workflow": prompt,  # Original workflow name
-                    "thread_id": tid,
-                    "timestamp": datetime.now().isoformat(),
-                },
-            }
-
-            if no_stream:
-                # Legacy invoke mode for CI/CD
-                result = graph.invoke(
-                    {"messages": [HumanMessage(content=formatted_prompt)]},
-                    config=config,
+            asyncio.run(
+                run_deterministic_async(
+                    prompt=prompt,
+                    thread_id=tid,
+                    no_stream=no_stream,
                 )
-                last_message = result["messages"][-1]
-                console.print("\n[bold green]Response:[/bold green]")
-                console.print(
-                    last_message.content if isinstance(last_message, dict) else last_message.content
-                )
-            else:
-                # Streaming mode with step-by-step progress
-                result = None
-                step_count = 0
-                for chunk in graph.stream(
-                    {"messages": [HumanMessage(content=formatted_prompt)]},
-                    config=config,
-                    stream_mode="updates",
-                ):
-                    # chunk is dict: {node_name: node_output}
-                    for node_name, node_output in chunk.items():
-                        if node_name == "load_workflow":
-                            console.print("[yellow]📋 Loading workflow...[/yellow]")
-                        elif node_name == "execute_step":
-                            # Track step progress
-                            if "current_step" in node_output:
-                                step_count = node_output["current_step"]
-                                total_steps = len(node_output.get("workflow_steps", []))
-                                current_step_desc = (
-                                    node_output.get("workflow_steps", [])[step_count - 1].get(
-                                        "description", "Executing step"
-                                    )
-                                    if step_count <= total_steps
-                                    else "Executing step"
-                                )
-                                console.print(
-                                    f"[cyan]🔧 Step {step_count}/{total_steps}: "
-                                    f"{current_step_desc}...[/cyan]"
-                                )
-                        elif node_name == "finalize_workflow":
-                            console.print("[yellow]📝 Finalizing workflow...[/yellow]")
-                        # Keep last result
-                        result = node_output
-
-                # Print final response
-                if result and "messages" in result:
-                    last_message = result["messages"][-1]
-                    console.print("\n[bold green]✅ Workflow Complete[/bold green]")
-                    console.print("\n[bold green]Response:[/bold green]")
-                    console.print(
-                        last_message.get("content", "")
-                        if isinstance(last_message, dict)
-                        else last_message.content
-                    )
-
-            console.print(f"\n[dim]Thread ID: {tid}[/dim]")
-
+            )
         else:
             console.print(f"[bold red]Error:[/bold red] Unknown mode '{mode}'")
             sys.exit(1)
@@ -368,9 +436,9 @@ def test_connection():
     console.print("[bold cyan]Testing PAN-OS connection...[/bold cyan]\n")
 
     try:
-        from src.core.client import test_connection
+        from src.core.client import test_connection as test_connection_async
 
-        success, message = test_connection()
+        success, message = asyncio.run(test_connection_async())
 
         if success:
             console.print(f"[bold green]{message}[/bold green]")
@@ -421,8 +489,6 @@ def version():
 
 
 # Register checkpoint subcommands
-from src.cli.checkpoint_commands import app as checkpoint_app
-
 app.add_typer(checkpoint_app)
 
 

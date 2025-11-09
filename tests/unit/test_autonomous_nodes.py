@@ -1,13 +1,14 @@
 """Unit tests for autonomous graph nodes."""
 
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from langgraph.graph import END
 
 from src.autonomous_graph import call_agent, route_after_agent
-from src.core.state_schemas import AutonomousState
 from src.core.config import AgentContext
+from src.core.state_schemas import AutonomousState
 
 
 class TestCallAgent:
@@ -158,9 +159,7 @@ class TestRouteAfterAgent:
         message = AIMessage(content="Done!")
         message.tool_calls = []
 
-        state: AutonomousState = {
-            "messages": [HumanMessage(content="Test"), message]
-        }
+        state: AutonomousState = {"messages": [HumanMessage(content="Test"), message]}
 
         # Call routing function
         result = route_after_agent(state)
@@ -376,9 +375,7 @@ class TestCallAgentRuntimeContext:
         mock_chat_anthropic.return_value.bind_tools.return_value = mock_llm
 
         # Create state and runtime context for Opus
-        state: AutonomousState = {
-            "messages": [HumanMessage(content="Analyze security policies")]
-        }
+        state: AutonomousState = {"messages": [HumanMessage(content="Analyze security policies")]}
         runtime = Mock()
         runtime.context = AgentContext(
             model_name="claude-3-opus-20240229",

@@ -107,9 +107,7 @@ class TestDeterministicGraphExecution:
         assert len(result["step_results"]) == 2
 
     @pytest.mark.asyncio
-    async def test_empty_workflow_handling(
-        self, deterministic_graph, test_thread_id
-    ):
+    async def test_empty_workflow_handling(self, deterministic_graph, test_thread_id):
         """Test handling of workflow with no steps."""
         # Execute workflow with no steps
         result = await deterministic_graph.ainvoke(

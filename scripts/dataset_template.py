@@ -32,4 +32,3 @@ MY_DATASET = [
 
 if __name__ == "__main__":
     print(TEMPLATE)
-

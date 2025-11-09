@@ -1,12 +1,12 @@
 """Unit tests for CLI timeout handling."""
 
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 from typer.testing import CliRunner
 
 from src.cli.commands import app
 from src.core.config import TIMEOUT_AUTONOMOUS, TIMEOUT_DETERMINISTIC
-
 
 runner = CliRunner()
 
@@ -92,11 +92,7 @@ class TestAutonomousModeTimeout:
         mock_create_graph.return_value = mock_graph
 
         # Run command with specific prompt
-        result = runner.invoke(app, [
-            "run",
-            "-p", "Create 100 address objects",
-            "-m", "autonomous"
-        ])
+        result = runner.invoke(app, ["run", "-p", "Create 100 address objects", "-m", "autonomous"])
 
         # Verify context in output
         assert result.exit_code == 1
@@ -153,11 +149,7 @@ class TestDeterministicModeTimeout:
 
         # Run command with workflow name
         workflow_name = "complex_security_workflow"
-        result = runner.invoke(app, [
-            "run",
-            "-p", workflow_name,
-            "-m", "deterministic"
-        ])
+        result = runner.invoke(app, ["run", "-p", workflow_name, "-m", "deterministic"])
 
         # Verify context in output
         assert result.exit_code == 1
@@ -184,11 +176,7 @@ class TestTimeoutErrorLogging:
 
         # Run command
         test_prompt = "List all address objects"
-        result = runner.invoke(app, [
-            "run",
-            "-p", test_prompt,
-            "-m", "autonomous"
-        ])
+        result = runner.invoke(app, ["run", "-p", test_prompt, "-m", "autonomous"])
 
         # Verify logging was called
         assert mock_logging.error.called
@@ -276,11 +264,7 @@ class TestTimeoutErrorMessages:
         long_prompt = "a" * 200
 
         # Run command
-        result = runner.invoke(app, [
-            "run",
-            "-p", long_prompt,
-            "-m", "deterministic"
-        ])
+        result = runner.invoke(app, ["run", "-p", long_prompt, "-m", "deterministic"])
 
         # Verify prompt is truncated (should show preview, not full prompt)
         assert result.exit_code == 1

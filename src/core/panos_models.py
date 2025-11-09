@@ -188,4 +188,3 @@ def parse_xml_to_dict(element: etree._Element) -> dict[str, Any]:
             result[child.tag] = child_data
 
     return result
-

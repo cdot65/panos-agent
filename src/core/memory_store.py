@@ -78,8 +78,7 @@ def store_firewall_config(
     try:
         store.put(namespace, key, data)
         logger.debug(
-            f"Stored firewall config: {hostname}/{config_type} "
-            f"(count={data.get('count', 0)})"
+            f"Stored firewall config: {hostname}/{config_type} " f"(count={data.get('count', 0)})"
         )
     except Exception as e:
         logger.error(f"Failed to store firewall config {hostname}/{config_type}: {e}")
@@ -186,9 +185,7 @@ def store_workflow_execution(
             f"(id={execution_id}, status={execution_data.get('status')})"
         )
     except Exception as e:
-        logger.error(
-            f"Failed to store workflow execution {workflow_name}/{execution_id}: {e}"
-        )
+        logger.error(f"Failed to store workflow execution {workflow_name}/{execution_id}: {e}")
 
 
 def search_workflow_history(
@@ -236,9 +233,7 @@ def search_workflow_history(
                 executions.append(value)
 
         # Sort by started_at descending (most recent first)
-        executions.sort(
-            key=lambda x: x.get("started_at", ""), reverse=True
-        )
+        executions.sort(key=lambda x: x.get("started_at", ""), reverse=True)
 
         # Apply limit after sorting
         return executions[:limit]
@@ -321,4 +316,3 @@ def get_firewall_operation_summary(
             "recent_operations": [],
             "config_types": {},
         }
-

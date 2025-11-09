@@ -1,23 +1,25 @@
 """Shared fixtures for unit tests."""
 
+from unittest.mock import MagicMock, Mock
+
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
-from unittest.mock import Mock, MagicMock
 
 
 @pytest.fixture(autouse=True)
 def mock_env_vars(monkeypatch):
     """Auto-mock environment variables for all unit tests.
-    
+
     Sets required PAN-OS and API credentials to prevent validation errors.
     """
     monkeypatch.setenv("PANOS_HOSTNAME", "192.168.1.1")
     monkeypatch.setenv("PANOS_USERNAME", "admin")
     monkeypatch.setenv("PANOS_PASSWORD", "admin")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    
+
     # Clear settings cache to ensure new environment variables are picked up
     import src.core.config
+
     src.core.config._settings = None
 
 
@@ -25,6 +27,7 @@ def mock_env_vars(monkeypatch):
 def mock_llm():
     """Mock ChatAnthropic LLM for testing (async-aware)."""
     from unittest.mock import AsyncMock
+
     llm = Mock()
     # Mock response without tool calls
     mock_response = AIMessage(content="Hello! I'm a PAN-OS automation agent.")
@@ -37,6 +40,7 @@ def mock_llm():
 def mock_llm_with_tool_call():
     """Mock LLM that returns a tool call (async-aware)."""
     from unittest.mock import AsyncMock
+
     llm = Mock()
     # Mock response with tool calls
     mock_response = AIMessage(
@@ -148,24 +152,26 @@ def mock_state_workflow():
 async def mock_panos_client(monkeypatch):
     """Mock httpx AsyncClient for PAN-OS API globally."""
     from unittest.mock import AsyncMock
+
     import httpx
-    
+
     mock_client = AsyncMock(spec=httpx.AsyncClient)
-    
+
     # Mock successful responses
     from httpx import Response
+
     success_response = Response(
         200,
         content=b'<response status="success" code="20"><msg>command succeeded</msg></response>',
     )
-    
+
     mock_client.get = AsyncMock(return_value=success_response)
     mock_client.post = AsyncMock(return_value=success_response)
-    
+
     # Mock get_panos_client function
     async def mock_get_client():
         return mock_client
-    
+
     monkeypatch.setattr("src.core.client.get_panos_client", mock_get_client)
     return mock_client
 

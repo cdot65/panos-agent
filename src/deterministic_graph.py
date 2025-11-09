@@ -11,6 +11,7 @@ from typing import Literal
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.store.base import BaseStore
+
 from src.core.checkpoint_manager import get_checkpointer
 from src.core.memory_store import store_workflow_execution
 from src.core.state_schemas import DeterministicState
@@ -217,7 +218,7 @@ def route_after_load(state: DeterministicState) -> Literal["execute_workflow", "
     return "execute_workflow"
 
 
-def create_deterministic_graph(store: BaseStore | None = None, checkpointer = None) -> StateGraph:
+def create_deterministic_graph(store: BaseStore | None = None, checkpointer=None) -> StateGraph:
     """Create deterministic workflow execution graph.
 
     Args:

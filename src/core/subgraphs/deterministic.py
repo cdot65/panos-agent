@@ -103,7 +103,7 @@ def execute_step(state: DeterministicWorkflowState) -> DeterministicWorkflowStat
             # Execute tool
             try:
                 result = tool.invoke(tool_params)
-            except (PanConnectionTimeout, PanURLError) as e:
+            except PanOSConnectionError as e:
                 # Network/connectivity errors - these are often transient
                 logger.error(f"PAN-OS connectivity error in step '{step_name}': {e}")
                 return {
@@ -411,9 +411,9 @@ def format_result(state: DeterministicWorkflowState) -> DeterministicWorkflowSta
         elif status == "skipped":
             reason = output.get("result", "")
             if "already exists" in reason:
-                message_parts.append(f"     Reason: Object already exists")
+                message_parts.append("     Reason: Object already exists")
             elif "not found" in reason:
-                message_parts.append(f"     Reason: Object not found")
+                message_parts.append("     Reason: Object not found")
 
     # Overall result
     if state.get("overall_result"):

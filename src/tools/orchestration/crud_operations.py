@@ -8,11 +8,12 @@ import uuid
 from typing import Literal, Optional
 
 from langchain_core.tools import tool
+
 from src.core.subgraphs.crud import create_crud_subgraph
 
 
 @tool
-def crud_operation(
+async def crud_operation(
     operation: Literal["create", "read", "update", "delete", "list"],
     object_type: Literal[
         "address", "address_group", "service", "service_group", "security_policy", "nat_policy"
@@ -73,18 +74,14 @@ def crud_operation(
     crud_graph = create_crud_subgraph()
 
     try:
-        import asyncio
-
-        result = asyncio.run(
-            crud_graph.ainvoke(
-                {
-                    "operation_type": operation,
-                    "object_type": object_type,
-                    "object_name": object_name,
-                    "data": data,
-                },
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
-            )
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": operation,
+                "object_type": object_type,
+                "object_name": object_name,
+                "data": data,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
         return result["message"]
     except Exception as e:

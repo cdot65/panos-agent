@@ -9,7 +9,7 @@ from langchain_core.tools import tool
 
 
 @tool
-def commit_changes(
+async def commit_changes(
     description: str = "Changes via PAN-OS Agent",
     sync: bool = True,
     require_approval: bool = False,
@@ -42,23 +42,19 @@ def commit_changes(
     commit_graph = create_commit_subgraph()
 
     try:
-        import asyncio
-
-        result = asyncio.run(
-            commit_graph.ainvoke(
-                {
-                    "description": description,
-                    "sync": sync,
-                    "require_approval": require_approval,
-                    "approval_granted": None,
-                    "commit_job_id": None,
-                    "job_status": None,
-                    "job_result": None,
-                    "message": "",
-                    "error": None,
-                },
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
-            )
+        result = await commit_graph.ainvoke(
+            {
+                "description": description,
+                "sync": sync,
+                "require_approval": require_approval,
+                "approval_granted": None,
+                "commit_job_id": None,
+                "job_status": None,
+                "job_result": None,
+                "message": "",
+                "error": None,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
         return result["message"]
     except Exception as e:

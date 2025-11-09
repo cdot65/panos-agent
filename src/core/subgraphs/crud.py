@@ -6,7 +6,7 @@ Async implementation using lxml + httpx for PAN-OS XML API.
 """
 
 import logging
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from langgraph.graph import END, START, StateGraph
 from lxml import etree
@@ -16,7 +16,6 @@ from src.core.panos_api import (
     PanOSAPIError,
     PanOSConnectionError,
     build_xpath,
-    build_xml_element,
     delete_config,
     edit_config,
     get_config,
@@ -134,7 +133,7 @@ async def check_existence(state: CRUDState) -> CRUDState:
         except PanOSAPIError as e:
             # Object not found is not an error for existence check
             if "does not exist" in str(e).lower() or "not present" in str(e).lower():
-                logger.info(f"Object does not exist")
+                logger.info("Object does not exist")
                 return {**state, "exists": False}
             raise
 

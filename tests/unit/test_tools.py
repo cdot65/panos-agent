@@ -1,7 +1,8 @@
 """Unit tests for PAN-OS tools."""
 
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, MagicMock, patch, AsyncMock
 
 
 class TestAddressTools:
@@ -14,9 +15,9 @@ class TestAddressTools:
 
             # Mock subgraph with async invoke
             mock_subgraph = Mock()
-            mock_subgraph.ainvoke = AsyncMock(return_value={
-                "message": "✅ Created address: test-addr"
-            })
+            mock_subgraph.ainvoke = AsyncMock(
+                return_value={"message": "✅ Created address: test-addr"}
+            )
             mock_create.return_value = mock_subgraph
 
             result = address_create.invoke({"name": "test-addr", "value": "10.1.1.1"})
@@ -32,9 +33,9 @@ class TestAddressTools:
 
             # Mock subgraph with async invoke
             mock_subgraph = Mock()
-            mock_subgraph.ainvoke = AsyncMock(return_value={
-                "message": "✅ Retrieved address: test-addr"
-            })
+            mock_subgraph.ainvoke = AsyncMock(
+                return_value={"message": "✅ Retrieved address: test-addr"}
+            )
             mock_create.return_value = mock_subgraph
 
             result = address_read.invoke({"name": "test-addr"})
@@ -50,9 +51,9 @@ class TestAddressTools:
 
             # Mock subgraph with async invoke
             mock_subgraph = Mock()
-            mock_subgraph.ainvoke = AsyncMock(return_value={
-                "message": "✅ Found 2 address objects"
-            })
+            mock_subgraph.ainvoke = AsyncMock(
+                return_value={"message": "✅ Found 2 address objects"}
+            )
             mock_create.return_value = mock_subgraph
 
             result = address_list.invoke({})
@@ -68,9 +69,9 @@ class TestAddressTools:
 
             # Mock subgraph with async invoke
             mock_subgraph = Mock()
-            mock_subgraph.ainvoke = AsyncMock(return_value={
-                "message": "✅ Deleted address: test-addr"
-            })
+            mock_subgraph.ainvoke = AsyncMock(
+                return_value={"message": "✅ Deleted address: test-addr"}
+            )
             mock_create.return_value = mock_subgraph
 
             result = address_delete.invoke({"name": "test-addr"})
@@ -90,16 +91,12 @@ class TestServiceTools:
 
             # Mock subgraph with async invoke
             mock_subgraph = Mock()
-            mock_subgraph.ainvoke = AsyncMock(return_value={
-                "message": "✅ Created service: http-8080"
-            })
+            mock_subgraph.ainvoke = AsyncMock(
+                return_value={"message": "✅ Created service: http-8080"}
+            )
             mock_create.return_value = mock_subgraph
 
-            result = service_create.invoke({
-                "name": "http-8080",
-                "protocol": "tcp",
-                "port": "8080"
-            })
+            result = service_create.invoke({"name": "http-8080", "protocol": "tcp", "port": "8080"})
 
             assert isinstance(result, str)
             assert "✅" in result or "created" in result.lower()
@@ -112,9 +109,9 @@ class TestServiceTools:
 
             # Mock subgraph with async invoke
             mock_subgraph = Mock()
-            mock_subgraph.ainvoke = AsyncMock(return_value={
-                "message": "✅ Found 1 service objects"
-            })
+            mock_subgraph.ainvoke = AsyncMock(
+                return_value={"message": "✅ Found 1 service objects"}
+            )
             mock_create.return_value = mock_subgraph
 
             result = service_list.invoke({})
@@ -133,15 +130,14 @@ class TestAddressGroupTools:
 
             # Mock subgraph with async invoke
             mock_subgraph = Mock()
-            mock_subgraph.ainvoke = AsyncMock(return_value={
-                "message": "✅ Created address group: test-group"
-            })
+            mock_subgraph.ainvoke = AsyncMock(
+                return_value={"message": "✅ Created address group: test-group"}
+            )
             mock_create.return_value = mock_subgraph
 
-            result = address_group_create.invoke({
-                "name": "test-group",
-                "static_members": ["addr1", "addr2"]
-            })
+            result = address_group_create.invoke(
+                {"name": "test-group", "static_members": ["addr1", "addr2"]}
+            )
 
             assert isinstance(result, str)
             assert "✅" in result or "created" in result.lower()
@@ -153,9 +149,7 @@ class TestAddressGroupTools:
 
             # Mock subgraph with async invoke
             mock_subgraph = Mock()
-            mock_subgraph.ainvoke = AsyncMock(return_value={
-                "message": "✅ Found 2 address groups"
-            })
+            mock_subgraph.ainvoke = AsyncMock(return_value={"message": "✅ Found 2 address groups"})
             mock_create.return_value = mock_subgraph
 
             result = address_group_list.invoke({})
@@ -174,15 +168,14 @@ class TestServiceGroupTools:
 
             # Mock subgraph with async invoke
             mock_subgraph = Mock()
-            mock_subgraph.ainvoke = AsyncMock(return_value={
-                "message": "✅ Created service group: web-services"
-            })
+            mock_subgraph.ainvoke = AsyncMock(
+                return_value={"message": "✅ Created service group: web-services"}
+            )
             mock_create.return_value = mock_subgraph
 
-            result = service_group_create.invoke({
-                "name": "web-services",
-                "members": ["http", "https"]
-            })
+            result = service_group_create.invoke(
+                {"name": "web-services", "members": ["http", "https"]}
+            )
 
             assert isinstance(result, str)
             assert "✅" in result or "created" in result.lower()
@@ -194,9 +187,7 @@ class TestServiceGroupTools:
 
             # Mock subgraph with async invoke
             mock_subgraph = Mock()
-            mock_subgraph.ainvoke = AsyncMock(return_value={
-                "message": "✅ Found 3 service groups"
-            })
+            mock_subgraph.ainvoke = AsyncMock(return_value={"message": "✅ Found 3 service groups"})
             mock_create.return_value = mock_subgraph
 
             result = service_group_list.invoke({})
@@ -215,16 +206,18 @@ class TestOrchestrationTools:
 
             # Mock subgraph with async invoke
             mock_subgraph = Mock()
-            mock_subgraph.ainvoke = AsyncMock(return_value={
-                "message": "✅ Created address: test-addr"
-            })
+            mock_subgraph.ainvoke = AsyncMock(
+                return_value={"message": "✅ Created address: test-addr"}
+            )
             mock_create.return_value = mock_subgraph
 
-            result = crud_operation.invoke({
-                "operation": "create",
-                "object_type": "address",
-                "data": {"name": "test-addr", "value": "10.1.1.1"}
-            })
+            result = crud_operation.invoke(
+                {
+                    "operation": "create",
+                    "object_type": "address",
+                    "data": {"name": "test-addr", "value": "10.1.1.1"},
+                }
+            )
 
             assert isinstance(result, str)
             assert "✅" in result or "created" in result.lower()
@@ -236,15 +229,12 @@ class TestOrchestrationTools:
 
             # Mock subgraph with async invoke
             mock_subgraph = Mock()
-            mock_subgraph.ainvoke = AsyncMock(return_value={
-                "message": "✅ Found 5 address objects"
-            })
+            mock_subgraph.ainvoke = AsyncMock(
+                return_value={"message": "✅ Found 5 address objects"}
+            )
             mock_create.return_value = mock_subgraph
 
-            result = crud_operation.invoke({
-                "operation": "list",
-                "object_type": "address"
-            })
+            result = crud_operation.invoke({"operation": "list", "object_type": "address"})
 
             assert isinstance(result, str)
             assert "5" in result or "✅" in result
@@ -256,14 +246,12 @@ class TestOrchestrationTools:
 
             # Mock subgraph with async invoke
             mock_subgraph = Mock()
-            mock_subgraph.ainvoke = AsyncMock(return_value={
-                "message": "✅ Commit completed successfully"
-            })
+            mock_subgraph.ainvoke = AsyncMock(
+                return_value={"message": "✅ Commit completed successfully"}
+            )
             mock_create.return_value = mock_subgraph
 
-            result = commit_changes.invoke({
-                "description": "Test commit"
-            })
+            result = commit_changes.invoke({"description": "Test commit"})
 
             assert isinstance(result, str)
             assert "✅" in result or "success" in result.lower()
@@ -275,14 +263,10 @@ class TestOrchestrationTools:
 
             # Mock subgraph that returns error with async invoke
             mock_subgraph = Mock()
-            mock_subgraph.ainvoke = AsyncMock(return_value={
-                "message": "❌ Error: Commit failed"
-            })
+            mock_subgraph.ainvoke = AsyncMock(return_value={"message": "❌ Error: Commit failed"})
             mock_create.return_value = mock_subgraph
 
-            result = commit_changes.invoke({
-                "description": "Test commit"
-            })
+            result = commit_changes.invoke({"description": "Test commit"})
 
             assert isinstance(result, str)
             assert "❌" in result or "error" in result.lower()
@@ -306,9 +290,7 @@ class TestToolErrorHandling:
 
             # Mock subgraph that returns error message with async invoke
             mock_subgraph = Mock()
-            mock_subgraph.ainvoke = AsyncMock(return_value={
-                "message": "❌ Error: API error"
-            })
+            mock_subgraph.ainvoke = AsyncMock(return_value={"message": "❌ Error: API error"})
             mock_create.return_value = mock_subgraph
 
             result = address_create.invoke({"name": "test", "value": "10.1.1.1"})
@@ -320,10 +302,10 @@ class TestToolErrorHandling:
         """Verify all tool functions have proper type hints for return type."""
         from src.tools.address_objects import (
             address_create,
-            address_read,
-            address_update,
             address_delete,
             address_list,
+            address_read,
+            address_update,
         )
 
         # StructuredTool doesn't expose return_annotation, but we can verify
@@ -334,7 +316,7 @@ class TestToolErrorHandling:
         assert hasattr(address_update, "name")
         assert hasattr(address_delete, "name")
         assert hasattr(address_list, "name")
-        
+
         # All tools are StructuredTool instances
         assert address_create.__class__.__name__ == "StructuredTool"
         assert address_read.__class__.__name__ == "StructuredTool"

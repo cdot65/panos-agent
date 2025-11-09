@@ -74,12 +74,12 @@ class TestLangSmithAnonymization:
         print("\n" + "=" * 70)
         print("MANUAL VERIFICATION REQUIRED")
         print("=" * 70)
-        print(f"\n1. Go to LangSmith: https://smith.langchain.com")
+        print("\n1. Go to LangSmith: https://smith.langchain.com")
         print(f"2. Search for test run ID: {test_run_id}")
-        print(f"3. Open the trace and verify:")
-        print(f"   - API key 'LUFRPT14M...' is replaced with '<panos-api-key>'")
-        print(f"   - Password 'super_secret_123' is replaced with '<password>'")
-        print(f"\nIf you see the actual sensitive values, anonymization FAILED!")
+        print("3. Open the trace and verify:")
+        print("   - API key 'LUFRPT14M...' is replaced with '<panos-api-key>'")
+        print("   - Password 'super_secret_123' is replaced with '<password>'")
+        print("\nIf you see the actual sensitive values, anonymization FAILED!")
         print("=" * 70 + "\n")
 
         # Return test run ID for manual lookup
@@ -115,7 +115,7 @@ class TestLangSmithAnonymization:
         print("ANTHROPIC API KEY ANONYMIZATION TEST")
         print("=" * 70)
         print(f"\nSearch for: {test_run_id}")
-        print(f"Verify 'sk-ant-api03-test_key_12345' is masked as '<anthropic-api-key>'")
+        print("Verify 'sk-ant-api03-test_key_12345' is masked as '<anthropic-api-key>'")
         print("=" * 70 + "\n")
 
         return test_run_id
@@ -149,7 +149,7 @@ class TestLangSmithAnonymization:
         print("XML PASSWORD ANONYMIZATION TEST")
         print("=" * 70)
         print(f"\nSearch for: {test_run_id}")
-        print(f"Verify '<password>MySecretPassword123</password>' is masked")
+        print("Verify '<password>MySecretPassword123</password>' is masked")
         print("=" * 70 + "\n")
 
         return test_run_id
@@ -187,11 +187,11 @@ class TestLangSmithAnonymization:
         print("MULTIPLE PATTERNS ANONYMIZATION TEST")
         print("=" * 70)
         print(f"\nSearch for: {test_run_id}")
-        print(f"Verify ALL of the following are masked:")
-        print(f"  - PAN-OS API key → '<panos-api-key>'")
-        print(f"  - Anthropic key → '<anthropic-api-key>'")
-        print(f"  - Password field → 'password: <password>'")
-        print(f"  - XML password → '<password>***</password>'")
+        print("Verify ALL of the following are masked:")
+        print("  - PAN-OS API key → '<panos-api-key>'")
+        print("  - Anthropic key → '<anthropic-api-key>'")
+        print("  - Password field → 'password: <password>'")
+        print("  - XML password → '<password>***</password>'")
         print("=" * 70 + "\n")
 
         return test_run_id

@@ -1,21 +1,27 @@
 """Diff engine for comparing PAN-OS configurations.
 
-Provides field-level comparison of desired vs actual configurations,
-with support for detecting changes, generating diffs, and formatting
-human-readable summaries.
+Provides field-level comparison of desired vs actual configurations with:
+- Order-independent list comparison (tags can be in any order)
+- Whitespace normalization
+- None vs empty string handling
+- Nested dict comparison
+- Human-readable summaries
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
-
-from lxml import etree
-
-from src.core.panos_models import parse_xml_to_dict
+from typing import Any, List
 
 
 @dataclass
 class FieldChange:
-    """Represents a change in a single field."""
+    """Represents a change in a single field.
+
+    Attributes:
+        field: Field name that changed
+        old_value: Previous value (None if added)
+        new_value: New value (None if removed)
+        change_type: Type of change ('added', 'removed', 'modified')
+    """
 
     field: str
     old_value: Any
@@ -23,7 +29,11 @@ class FieldChange:
     change_type: str  # "added", "removed", "modified"
 
     def to_dict(self) -> dict:
-        """Convert to dictionary for serialization."""
+        """Convert to dictionary for serialization.
+
+        Returns:
+            Dictionary representation of field change
+        """
         return {
             "field": self.field,
             "old": self.old_value,
@@ -34,22 +44,40 @@ class FieldChange:
 
 @dataclass
 class ConfigDiff:
-    """Represents diff between two configurations."""
+    """Represents diff between two configurations.
+
+    Attributes:
+        object_name: Name of the object being compared
+        object_type: Type of object (address, service, etc.)
+        changes: List of field changes
+    """
 
     object_name: str
     object_type: str
     changes: List[FieldChange]
 
     def is_identical(self) -> bool:
-        """Check if configs are identical (no changes)."""
+        """Check if configs are identical (no changes).
+
+        Returns:
+            True if no changes detected, False otherwise
+        """
         return len(self.changes) == 0
 
     def has_changes(self) -> bool:
-        """Check if there are any changes."""
+        """Check if there are any changes.
+
+        Returns:
+            True if changes detected, False otherwise
+        """
         return len(self.changes) > 0
 
     def to_dict(self) -> dict:
-        """Convert to dictionary for serialization."""
+        """Convert to dictionary for serialization.
+
+        Returns:
+            Dictionary representation of diff
+        """
         return {
             "name": self.object_name,
             "type": self.object_type,
@@ -58,7 +86,11 @@ class ConfigDiff:
         }
 
     def summary(self) -> str:
-        """Generate human-readable summary."""
+        """Generate human-readable summary.
+
+        Returns:
+            Formatted string summarizing changes
+        """
         if self.is_identical():
             return f"No changes detected for {self.object_type} '{self.object_name}'"
 
@@ -71,11 +103,56 @@ class ConfigDiff:
             elif change.change_type == "removed":
                 summary += f"  - {change.field}: {change.old_value}\n"
 
-        return summary
+        return summary.rstrip()
+
+
+def _values_equal(val1: Any, val2: Any) -> bool:
+    """Compare two values with normalization.
+
+    Handles:
+    - List order (tags can be in any order)
+    - Whitespace differences
+    - None vs empty string
+    - Nested dicts
+
+    Args:
+        val1: First value
+        val2: Second value
+
+    Returns:
+        True if values are equal after normalization, False otherwise
+    """
+    # Handle None/empty cases
+    if val1 is None or val1 == "":
+        return val2 is None or val2 == ""
+    if val2 is None or val2 == "":
+        return val1 is None or val1 == ""
+
+    # Handle lists (order-independent for tags)
+    if isinstance(val1, list) and isinstance(val2, list):
+        # Sort both lists for comparison (order-independent)
+        return sorted(str(v) for v in val1) == sorted(str(v) for v in val2)
+
+    # Handle nested dicts
+    if isinstance(val1, dict) and isinstance(val2, dict):
+        # Compare all keys from both dicts
+        all_keys = set(val1.keys()) | set(val2.keys())
+        return all(_values_equal(val1.get(k), val2.get(k)) for k in all_keys)
+
+    # Handle strings (strip whitespace)
+    if isinstance(val1, str) and isinstance(val2, str):
+        return val1.strip() == val2.strip()
+
+    # Default comparison
+    return val1 == val2
 
 
 def compare_configs(desired: dict, actual: dict) -> ConfigDiff:
     """Compare two PAN-OS configurations at field level.
+
+    Compares desired configuration against actual configuration and returns
+    a ConfigDiff object detailing all changes. Ignores metadata fields and
+    applies normalization for robust comparison.
 
     Args:
         desired: Desired configuration (what we want to apply)
@@ -110,26 +187,18 @@ def compare_configs(desired: dict, actual: dict) -> ConfigDiff:
         # Field added in desired
         if desired_val is not None and actual_val is None:
             changes.append(
-                FieldChange(
-                    field=field,
-                    old_value=None,
-                    new_value=desired_val,
-                    change_type="added",
-                )
+                FieldChange(field=field, old_value=None, new_value=desired_val, change_type="added")
             )
 
         # Field removed in desired
         elif desired_val is None and actual_val is not None:
             changes.append(
                 FieldChange(
-                    field=field,
-                    old_value=actual_val,
-                    new_value=None,
-                    change_type="removed",
+                    field=field, old_value=actual_val, new_value=None, change_type="removed"
                 )
             )
 
-        # Field modified
+        # Field potentially modified
         elif desired_val is not None and actual_val is not None:
             # Normalize for comparison (handle list order, whitespace, etc.)
             if not _values_equal(desired_val, actual_val):
@@ -149,67 +218,10 @@ def compare_configs(desired: dict, actual: dict) -> ConfigDiff:
     )
 
 
-def _values_equal(val1: Any, val2: Any) -> bool:
-    """Compare two values with normalization.
-
-    Handles:
-    - List order (tags can be in any order)
-    - Whitespace differences
-    - None vs empty string
-    - Nested dicts
-
-    Args:
-        val1: First value to compare
-        val2: Second value to compare
-
-    Returns:
-        True if values are equal after normalization, False otherwise
-    """
-    # Handle None/empty cases
-    if val1 is None or val1 == "":
-        return val2 is None or val2 == ""
-    if val2 is None or val2 == "":
-        return val1 is None or val1 == ""
-
-    # Handle lists (order-independent for tags)
-    if isinstance(val1, list) and isinstance(val2, list):
-        # Normalize list items (handle nested structures)
-        normalized1 = sorted(_normalize_list_item(item) for item in val1)
-        normalized2 = sorted(_normalize_list_item(item) for item in val2)
-        return normalized1 == normalized2
-
-    # Handle nested dicts
-    if isinstance(val1, dict) and isinstance(val2, dict):
-        # Compare all keys from both dicts
-        all_keys = set(val1.keys()) | set(val2.keys())
-        for key in all_keys:
-            if not _values_equal(val1.get(key), val2.get(key)):
-                return False
-        return True
-
-    # Handle strings (strip whitespace)
-    if isinstance(val1, str) and isinstance(val2, str):
-        return val1.strip() == val2.strip()
-
-    # Default comparison
-    return val1 == val2
-
-
-def _normalize_list_item(item: Any) -> Any:
-    """Normalize a list item for comparison.
-
-    Handles nested dicts and strings in lists.
-    """
-    if isinstance(item, dict):
-        # Sort dict keys for comparison
-        return tuple(sorted((k, _normalize_list_item(v)) for k, v in item.items()))
-    if isinstance(item, str):
-        return item.strip()
-    return item
-
-
 def compare_xml(desired_xml: str, actual_xml: str) -> ConfigDiff:
     """Compare two XML configurations.
+
+    Parses XML strings into dictionaries and compares them using compare_configs().
 
     Args:
         desired_xml: Desired XML string
@@ -217,12 +229,20 @@ def compare_xml(desired_xml: str, actual_xml: str) -> ConfigDiff:
 
     Returns:
         ConfigDiff with list of changes
+
+    Raises:
+        ValueError: If XML parsing fails
     """
-    desired_tree = etree.fromstring(desired_xml.encode() if isinstance(desired_xml, str) else desired_xml)
-    actual_tree = etree.fromstring(actual_xml.encode() if isinstance(actual_xml, str) else actual_xml)
+    from lxml import etree
+    from src.core.panos_models import parse_xml_to_dict
+
+    try:
+        desired_tree = etree.fromstring(desired_xml.encode("utf-8"))
+        actual_tree = etree.fromstring(actual_xml.encode("utf-8"))
+    except etree.XMLSyntaxError as e:
+        raise ValueError(f"XML parsing failed: {e}")
 
     desired_dict = parse_xml_to_dict(desired_tree)
     actual_dict = parse_xml_to_dict(actual_tree)
 
     return compare_configs(desired_dict, actual_dict)
-

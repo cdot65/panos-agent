@@ -36,17 +36,19 @@ async def _get_existing_config(state: CRUDState) -> dict:
 
     Returns:
         Dictionary representation of existing config
+
+    Raises:
+        PanOSAPIError: If config retrieval fails
     """
     from src.core.config import get_settings
     from src.core.memory_store import get_cached_config
 
     settings = get_settings()
     store = state.get("store")
+    object_name = state.get("object_name") or state.get("data", {}).get("name")
     device_context = state.get("device_context")
-    object_name = state.get("object_name") or state["data"].get("name")
-    xpath = build_xpath(
-        state["object_type"], name=object_name, device_context=device_context
-    )
+
+    xpath = build_xpath(state["object_type"], name=object_name, device_context=device_context)
 
     # Try cache first if enabled and store available
     if settings.cache_enabled and store:
@@ -60,24 +62,29 @@ async def _get_existing_config(state: CRUDState) -> dict:
     logger.debug(f"Fetching config from firewall for diff comparison: {object_name}")
     client = await get_panos_client()
     result = await get_config(xpath, client)
+
+    if result is None:
+        return {}
+
     return parse_xml_to_dict(result)
 
 
-def _format_skip_details(config: dict) -> dict:
+def _format_skip_details(config: dict, object_type: str) -> dict:
     """Format existing config details for skip message.
 
     Args:
         config: Configuration dictionary
+        object_type: Type of object (address, service, etc.)
 
     Returns:
-        Dictionary with formatted details
+        Dictionary of formatted details
     """
     details = {
-        "name": config.get("name"),
-        "type": config.get("@type", "unknown"),
+        "name": config.get("name", "unknown"),
+        "type": object_type,
     }
 
-    # Object-specific details
+    # Address object details
     if "ip-netmask" in config:
         details["ip"] = config["ip-netmask"]
     elif "ip-range" in config:
@@ -85,54 +92,90 @@ def _format_skip_details(config: dict) -> dict:
     elif "fqdn" in config:
         details["fqdn"] = config["fqdn"]
 
+    # Service object details
+    if "protocol" in config:
+        protocol = config["protocol"]
+        if isinstance(protocol, dict):
+            # Extract protocol type and port
+            for proto_type in ["tcp", "udp"]:
+                if proto_type in protocol:
+                    port_info = protocol[proto_type]
+                    if isinstance(port_info, dict) and "port" in port_info:
+                        details["protocol"] = f"{proto_type}/{port_info['port']}"
+
+    # Common fields
     if "description" in config:
         details["description"] = config["description"]
 
-    # Handle tags (can be dict with member list or list)
+    # Tags
     if "tag" in config:
         tag_data = config["tag"]
         if isinstance(tag_data, dict) and "member" in tag_data:
             members = tag_data["member"]
             if isinstance(members, list):
-                # Extract text from member items if they're dicts
-                tags = []
-                for m in members:
-                    if isinstance(m, dict) and "_text" in m:
-                        tags.append(m["_text"])
-                    elif isinstance(m, str):
-                        tags.append(m)
-                details["tags"] = tags
-            elif isinstance(members, str):
-                details["tags"] = [members]
+                details["tags"] = ", ".join(members)
+            else:
+                details["tags"] = members
+        elif isinstance(tag_data, list):
+            details["tags"] = ", ".join(tag_data)
 
     return details
 
 
-def _format_skip_message(name: str, config: dict, reason: str) -> str:
+def _format_skip_message(name: str, config: dict, object_type: str, reason: str) -> str:
     """Format user-friendly skip message with details.
 
     Args:
         name: Object name
         config: Configuration dictionary
-        reason: Skip reason
+        object_type: Type of object
+        reason: Reason for skipping (unchanged, already_exists, etc.)
 
     Returns:
-        Formatted message string
+        Formatted skip message string
     """
-    details = _format_skip_details(config)
-    object_type = config.get("@type", "object")
+    details = _format_skip_details(config, object_type)
+
+    # Map reason to user-friendly text
+    reason_text = {
+        "unchanged": "Object unchanged, no update needed",
+        "already_exists": "Object already exists with same configuration",
+        "not_found": "Object not found",
+    }.get(reason, reason)
 
     msg = f"⏭️  Skipped: {object_type} '{name}' already exists\n"
-    msg += f"   Reason: {reason}\n"
+    msg += f"   Reason: {reason_text}\n"
     msg += "   Current config:\n"
 
     for key, value in details.items():
-        if key in ("name", "type"):
+        if key in ["name", "type"]:
             continue
-        if isinstance(value, list):
-            msg += f"     {key.capitalize()}: {', '.join(str(v) for v in value)}\n"
-        elif value:
-            msg += f"     {key.capitalize()}: {value}\n"
+        msg += f"     {key}: {value}\n"
+
+    return msg.rstrip()
+
+
+def _format_diff_message(name: str, object_type: str, diff) -> str:
+    """Format diff message for update approval.
+
+    Args:
+        name: Object name
+        object_type: Type of object
+        diff: ConfigDiff object
+
+    Returns:
+        Formatted diff message string
+    """
+    msg = f"\n🔍 Update Detected for {object_type} '{name}'\n\n"
+    msg += "Changes:\n"
+
+    for change in diff.changes:
+        if change.change_type == "modified":
+            msg += f"  • {change.field}: {change.old_value} → {change.new_value}\n"
+        elif change.change_type == "added":
+            msg += f"  + {change.field}: {change.new_value}\n"
+        elif change.change_type == "removed":
+            msg += f"  - {change.field}: {change.old_value}\n"
 
     return msg
 
@@ -466,7 +509,7 @@ def build_object_xml(object_type: str, data: dict[str, Any]) -> etree._Element:
 
 
 async def create_object(state: CRUDState) -> CRUDState:
-    """Create new PAN-OS object.
+    """Create new PAN-OS object with diff detection.
 
     Args:
         state: Current CRUD state
@@ -477,11 +520,11 @@ async def create_object(state: CRUDState) -> CRUDState:
     mode = state.get("mode", "skip_if_exists")  # Changed default to skip_if_exists for idempotency
     object_name = state["data"].get("name")
 
-    # Check if already exists (idempotent behavior)
+    # Check if already exists (idempotent behavior with diff detection)
     if state.get("exists"):
         if mode == "skip_if_exists":
-            # Fetch existing config for comparison
             try:
+                # Fetch existing config for comparison
                 existing_config = await _get_existing_config(state)
 
                 # Compare desired vs actual
@@ -490,8 +533,11 @@ async def create_object(state: CRUDState) -> CRUDState:
                 diff = compare_configs(state["data"], existing_config)
 
                 if diff.is_identical():
-                    # Unchanged - skip with details
-                    logger.info(f"⏭️  Object {object_name} already exists and is unchanged (skipped)")
+                    # Unchanged - skip with detailed message
+                    skip_message = _format_skip_message(
+                        object_name, existing_config, state["object_type"], "unchanged"
+                    )
+                    logger.info(f"⏭️  Object {object_name} already exists and unchanged (skipped)")
                     return {
                         **state,
                         "operation_result": {
@@ -499,27 +545,31 @@ async def create_object(state: CRUDState) -> CRUDState:
                             "name": object_name,
                             "object_type": state["object_type"],
                             "reason": "unchanged",
-                            "details": _format_skip_details(existing_config),
+                            "details": _format_skip_details(existing_config, state["object_type"]),
                         },
-                        "message": _format_skip_message(object_name, existing_config, "Object unchanged, no update needed"),
+                        "message": skip_message,
                     }
                 else:
-                    # Changed - show diff and mark as pending approval
-                    logger.info(f"✏️  Object {object_name} exists but differs (update detected)")
+                    # Changed - show diff (for now, just skip with diff info)
+                    # TODO: In future phase, add approval gate here
+                    diff_summary = diff.summary()
+                    logger.info(
+                        f"⚠️  Object {object_name} exists with different config:\n{diff_summary}"
+                    )
                     return {
                         **state,
                         "operation_result": {
-                            "status": "pending_approval",
+                            "status": "skipped",
                             "name": object_name,
                             "object_type": state["object_type"],
-                            "reason": "update_detected",
+                            "reason": "exists_with_changes",
                             "diff": diff.to_dict(),
                         },
-                        "message": f"✏️  Update detected for {state['object_type']} '{object_name}'\n{diff.summary()}",
+                        "message": f"⏭️  Skipped: {state['object_type']} '{object_name}' exists with different config\n{diff_summary}",
                     }
             except Exception as e:
                 # If diff comparison fails, fall back to simple skip
-                logger.warning(f"Failed to compare configs, using simple skip: {e}")
+                logger.warning(f"Diff comparison failed, falling back to simple skip: {e}")
                 return {
                     **state,
                     "operation_result": {
@@ -698,7 +748,7 @@ async def read_object(state: CRUDState) -> CRUDState:
 
 
 async def update_object(state: CRUDState) -> CRUDState:
-    """Update existing PAN-OS object (with diff detection, invalidates cache).
+    """Update existing PAN-OS object with diff detection (invalidates cache).
 
     Args:
         state: Current CRUD state
@@ -706,12 +756,13 @@ async def update_object(state: CRUDState) -> CRUDState:
     Returns:
         Updated state with operation_result
     """
-    logger.debug(f"Updating {state['object_type']}: {state['object_name']}")
+    object_name = state["object_name"]
+    logger.debug(f"Updating {state['object_type']}: {object_name}")
 
     if not state.get("exists"):
         return {
             **state,
-            "error": f"Object {state['object_name']} does not exist",
+            "error": f"Object {object_name} does not exist",
             "operation_result": {"status": "error", "message": "Object not found"},
         }
 
@@ -719,43 +770,41 @@ async def update_object(state: CRUDState) -> CRUDState:
         from src.core.config import get_settings
         from src.core.memory_store import invalidate_cache
 
-        # Fetch existing config for comparison
-        existing_config = await _get_existing_config(state)
-
         # Merge name from object_name if not in data
         update_data = {**state["data"]}
         if "name" not in update_data:
-            update_data["name"] = state["object_name"]
+            update_data["name"] = object_name
 
-        # Compare desired vs actual
+        # Fetch existing config and compare
+        existing_config = await _get_existing_config(state)
+
         from src.core.diff_engine import compare_configs
 
         diff = compare_configs(update_data, existing_config)
 
         # Skip if no changes detected
         if diff.is_identical():
-            logger.info(f"⏭️  No changes detected for {state['object_name']}")
+            logger.info(f"⏭️  No changes detected for {object_name}, skipping update")
             return {
                 **state,
                 "operation_result": {
                     "status": "skipped",
-                    "name": state["object_name"],
+                    "name": object_name,
+                    "object_type": state["object_type"],
                     "reason": "unchanged",
                     "message": "Configuration identical, no update needed",
                 },
-                "message": f"⏭️  Skipped: {state['object_type']} '{state['object_name']}' (unchanged)",
+                "message": f"⏭️  Skipped: {state['object_type']} '{object_name}' (unchanged)",
             }
 
-        # Changes detected - show diff
-        logger.info(f"✏️  Changes detected for {state['object_name']}:")
+        # Changes detected - log diff and proceed with update
+        logger.info(f"✏️  Changes detected for {object_name}:")
         logger.info(diff.summary())
 
         client = await get_panos_client()
         settings = get_settings()
         device_context = state.get("device_context")
-        xpath = build_xpath(
-            state["object_type"], name=state["object_name"], device_context=device_context
-        )
+        xpath = build_xpath(state["object_type"], name=object_name, device_context=device_context)
 
         # Build XML element with updated data
         element = build_object_xml(state["object_type"], update_data)
@@ -763,24 +812,24 @@ async def update_object(state: CRUDState) -> CRUDState:
         # Update via edit config
         await edit_config(xpath, element, client)
 
-        logger.info(f"Successfully updated {state['object_type']}: {state['object_name']}")
+        logger.info(f"Successfully updated {state['object_type']}: {object_name}")
 
         # Invalidate cache after successful update
         store = state.get("store")
         if settings.cache_enabled and store:
             invalidate_cache(settings.panos_hostname, xpath, store)
-            logger.debug(f"Cache invalidated after update: {state['object_name']}")
+            logger.debug(f"Cache invalidated after update: {object_name}")
 
         return {
             **state,
             "operation_result": {
-                "status": "updated",
-                "name": state["object_name"],
-                "diff": diff.to_dict(),
+                "status": "success",
+                "name": object_name,
                 "updated_fields": list(state["data"].keys()),
-                "message": f"Successfully updated {state['object_type']} '{state['object_name']}'",
+                "diff": diff.to_dict(),
+                "message": f"Successfully updated {state['object_type']} '{object_name}'",
             },
-            "message": f"✅ Updated: {state['object_type']} '{state['object_name']}'\n{diff.summary()}",
+            "message": f"✅ Updated: {state['object_type']} '{object_name}'\n{diff.summary()}",
         }
 
     except PanOSConnectionError as e:
@@ -952,7 +1001,7 @@ async def list_objects(state: CRUDState) -> CRUDState:
 
 
 async def format_response(state: CRUDState) -> CRUDState:
-    """Format final response message.
+    """Format final response message with enhanced skip details.
 
     Args:
         state: Current CRUD state
@@ -960,6 +1009,10 @@ async def format_response(state: CRUDState) -> CRUDState:
     Returns:
         Updated state with message field
     """
+    # If message already set (e.g., from create/update with diff), use it
+    if state.get("message") and not state.get("error"):
+        return state
+
     if state.get("error"):
         message = f"❌ Error: {state['error']}"
     elif state.get("operation_result"):
@@ -972,28 +1025,32 @@ async def format_response(state: CRUDState) -> CRUDState:
             elif state["operation_type"] == "read":
                 message = f"✅ Retrieved {state['object_type']}: {result.get('name')}"
             elif state["operation_type"] == "update":
-                message = f"✅ Updated {state['object_type']}: {result.get('name')}"
+                # Check if diff available
+                if result.get("diff"):
+                    change_count = len(result["diff"].get("changes", []))
+                    message = f"✅ Updated {state['object_type']}: {result.get('name')} ({change_count} changes)"
+                else:
+                    message = f"✅ Updated {state['object_type']}: {result.get('name')}"
             elif state["operation_type"] == "delete":
                 message = f"✅ Deleted {state['object_type']}: {result.get('name')}"
             elif state["operation_type"] == "list":
                 message = f"✅ Found {result.get('count')} {state['object_type']} objects"
-        elif status == "updated":
-            # Update with changes applied
-            diff = result.get("diff", {})
-            change_count = len(diff.get("changes", []))
-            message = f"✅ Updated {state['object_type']}: {result.get('name')} ({change_count} changes)"
-        elif status == "pending_approval":
-            # Update detected, awaiting approval
-            diff = result.get("diff", {})
-            message = f"✏️  Update detected for {state['object_type']}: {result.get('name')} (pending approval)"
         elif status == "skipped":
             reason = result.get("reason")
-            if reason == "already_exists":
+            if reason == "unchanged":
+                message = (
+                    f"⏭️  Skipped {state['object_type']}: {result.get('name')} "
+                    f"(unchanged - identical configuration)"
+                )
+            elif reason == "already_exists":
                 message = (
                     f"⏭️  Skipped {state['object_type']}: {result.get('name')} (already exists)"
                 )
-            elif reason == "unchanged":
-                message = f"⏭️  Skipped {state['object_type']}: {result.get('name')} (unchanged)"
+            elif reason == "exists_with_changes":
+                message = (
+                    f"⏭️  Skipped {state['object_type']}: {result.get('name')} "
+                    f"(exists with different config)"
+                )
             elif reason == "not_found":
                 message = f"⏭️  Skipped {state['object_type']}: {result.get('name')} (not found)"
             else:

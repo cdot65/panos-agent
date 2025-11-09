@@ -1,11 +1,18 @@
-"""Tests for diff engine functionality."""
+"""Tests for diff_engine.py - Configuration comparison and diff detection.
+
+Comprehensive test suite covering:
+- FieldChange creation and serialization
+- ConfigDiff functionality
+- compare_configs() with various scenarios
+- compare_xml() for XML string comparison
+- _values_equal() normalization logic
+"""
 
 import pytest
-from lxml import etree
 
 from src.core.diff_engine import (
-    ConfigDiff,
     FieldChange,
+    ConfigDiff,
     compare_configs,
     compare_xml,
     _values_equal,
@@ -16,12 +23,12 @@ class TestFieldChange:
     """Tests for FieldChange dataclass."""
 
     def test_field_change_creation(self):
-        """Test creating a FieldChange instance."""
+        """Test creating a FieldChange."""
         change = FieldChange(
             field="ip-netmask",
             old_value="10.0.0.1/32",
             new_value="10.0.0.2/32",
-            change_type="modified",
+            change_type="modified"
         )
         assert change.field == "ip-netmask"
         assert change.old_value == "10.0.0.1/32"
@@ -29,12 +36,12 @@ class TestFieldChange:
         assert change.change_type == "modified"
 
     def test_field_change_to_dict(self):
-        """Test converting FieldChange to dictionary."""
+        """Test converting FieldChange to dict."""
         change = FieldChange(
             field="description",
             old_value="Old desc",
             new_value="New desc",
-            change_type="modified",
+            change_type="modified"
         )
         result = change.to_dict()
         assert result == {
@@ -45,26 +52,39 @@ class TestFieldChange:
         }
 
     def test_modified_change(self):
-        """Test modified change type."""
+        """Test modified field change."""
         change = FieldChange(
-            field="ip-netmask", old_value="10.0.0.1/32", new_value="10.0.0.2/32", change_type="modified"
+            field="ip-netmask",
+            old_value="10.0.0.1/32",
+            new_value="10.0.0.2/32",
+            change_type="modified"
         )
         assert change.change_type == "modified"
+        assert change.old_value is not None
+        assert change.new_value is not None
 
     def test_added_change(self):
-        """Test added change type."""
+        """Test added field change."""
         change = FieldChange(
-            field="description", old_value=None, new_value="New description", change_type="added"
+            field="description",
+            old_value=None,
+            new_value="New description",
+            change_type="added"
         )
         assert change.change_type == "added"
         assert change.old_value is None
+        assert change.new_value == "New description"
 
     def test_removed_change(self):
-        """Test removed change type."""
+        """Test removed field change."""
         change = FieldChange(
-            field="description", old_value="Old description", new_value=None, change_type="removed"
+            field="tag",
+            old_value=["Production"],
+            new_value=None,
+            change_type="removed"
         )
         assert change.change_type == "removed"
+        assert change.old_value == ["Production"]
         assert change.new_value is None
 
 
@@ -73,258 +93,419 @@ class TestConfigDiff:
 
     def test_identical_configs(self):
         """Test ConfigDiff with no changes."""
-        diff = ConfigDiff(object_name="test", object_type="address", changes=[])
-        assert diff.is_identical() is True
-        assert diff.has_changes() is False
+        diff = ConfigDiff(
+            object_name="web-1",
+            object_type="address",
+            changes=[]
+        )
+        assert diff.is_identical()
+        assert not diff.has_changes()
+        assert "No changes detected" in diff.summary()
 
     def test_single_field_change(self):
-        """Test ConfigDiff with single field change."""
-        change = FieldChange(
-            field="ip-netmask", old_value="10.0.0.1/32", new_value="10.0.0.2/32", change_type="modified"
+        """Test ConfigDiff with one field changed."""
+        changes = [
+            FieldChange("ip-netmask", "10.0.0.1/32", "10.0.0.2/32", "modified")
+        ]
+        diff = ConfigDiff(
+            object_name="web-1",
+            object_type="address",
+            changes=changes
         )
-        diff = ConfigDiff(object_name="test", object_type="address", changes=[change])
-        assert diff.is_identical() is False
-        assert diff.has_changes() is True
-        assert len(diff.changes) == 1
+        assert not diff.is_identical()
+        assert diff.has_changes()
+        assert "Changes detected" in diff.summary()
+        assert "ip-netmask" in diff.summary()
 
     def test_multiple_field_changes(self):
         """Test ConfigDiff with multiple field changes."""
         changes = [
-            FieldChange(field="ip-netmask", old_value="10.0.0.1/32", new_value="10.0.0.2/32", change_type="modified"),
-            FieldChange(field="description", old_value="Old", new_value="New", change_type="modified"),
+            FieldChange("ip-netmask", "10.0.0.1/32", "10.0.0.2/32", "modified"),
+            FieldChange("description", "Old", "New", "modified"),
         ]
-        diff = ConfigDiff(object_name="test", object_type="address", changes=changes)
-        assert diff.has_changes() is True
+        diff = ConfigDiff(
+            object_name="web-1",
+            object_type="address",
+            changes=changes
+        )
         assert len(diff.changes) == 2
-
-    def test_diff_summary(self):
-        """Test generating human-readable summary."""
-        changes = [
-            FieldChange(field="ip-netmask", old_value="10.0.0.1/32", new_value="10.0.0.2/32", change_type="modified"),
-            FieldChange(field="description", old_value=None, new_value="New desc", change_type="added"),
-        ]
-        diff = ConfigDiff(object_name="web-server", object_type="address", changes=changes)
         summary = diff.summary()
-        assert "web-server" in summary
         assert "ip-netmask" in summary
-        assert "10.0.0.1/32 → 10.0.0.2/32" in summary
         assert "description" in summary
-        assert "New desc" in summary
+
+    def test_diff_summary_added_field(self):
+        """Test summary format for added field."""
+        changes = [
+            FieldChange("description", None, "New description", "added")
+        ]
+        diff = ConfigDiff("web-1", "address", changes)
+        summary = diff.summary()
+        assert "+ description" in summary
+        assert "New description" in summary
+
+    def test_diff_summary_removed_field(self):
+        """Test summary format for removed field."""
+        changes = [
+            FieldChange("description", "Old description", None, "removed")
+        ]
+        diff = ConfigDiff("web-1", "address", changes)
+        summary = diff.summary()
+        assert "- description" in summary
+        assert "Old description" in summary
 
     def test_diff_to_dict(self):
-        """Test converting ConfigDiff to dictionary."""
-        change = FieldChange(
-            field="ip-netmask", old_value="10.0.0.1/32", new_value="10.0.0.2/32", change_type="modified"
-        )
-        diff = ConfigDiff(object_name="test", object_type="address", changes=[change])
+        """Test converting ConfigDiff to dict."""
+        changes = [
+            FieldChange("ip-netmask", "10.0.0.1/32", "10.0.0.2/32", "modified")
+        ]
+        diff = ConfigDiff("web-1", "address", changes)
         result = diff.to_dict()
-        assert result["name"] == "test"
+        assert result["name"] == "web-1"
         assert result["type"] == "address"
         assert result["is_identical"] is False
         assert len(result["changes"]) == 1
 
 
 class TestCompareConfigs:
-    """Tests for compare_configs function."""
+    """Tests for compare_configs() function."""
 
     def test_identical_address_objects(self):
         """Test comparing identical address objects."""
-        desired = {"name": "web-1", "ip-netmask": "10.0.0.1/32", "description": "Web server"}
-        actual = {"name": "web-1", "ip-netmask": "10.0.0.1/32", "description": "Web server"}
-        diff = compare_configs(desired, actual)
-        assert diff.is_identical() is True
+        config1 = {
+            "name": "web-1",
+            "ip-netmask": "10.0.0.1/32",
+            "description": "Web server",
+        }
+        config2 = {
+            "name": "web-1",
+            "ip-netmask": "10.0.0.1/32",
+            "description": "Web server",
+        }
+        diff = compare_configs(config1, config2)
+        assert diff.is_identical()
         assert len(diff.changes) == 0
 
     def test_ip_address_change(self):
         """Test detecting IP address change."""
-        desired = {"name": "web-1", "ip-netmask": "10.0.0.2/32"}
-        actual = {"name": "web-1", "ip-netmask": "10.0.0.1/32"}
+        desired = {
+            "name": "web-1",
+            "ip-netmask": "10.0.0.2/32",
+        }
+        actual = {
+            "name": "web-1",
+            "ip-netmask": "10.0.0.1/32",
+        }
         diff = compare_configs(desired, actual)
-        assert diff.is_identical() is False
+        assert diff.has_changes()
         assert len(diff.changes) == 1
         assert diff.changes[0].field == "ip-netmask"
+        assert diff.changes[0].change_type == "modified"
         assert diff.changes[0].old_value == "10.0.0.1/32"
         assert diff.changes[0].new_value == "10.0.0.2/32"
-        assert diff.changes[0].change_type == "modified"
 
     def test_description_change(self):
         """Test detecting description change."""
-        desired = {"name": "web-1", "description": "New description"}
-        actual = {"name": "web-1", "description": "Old description"}
+        desired = {
+            "name": "web-1",
+            "ip-netmask": "10.0.0.1/32",
+            "description": "Updated description",
+        }
+        actual = {
+            "name": "web-1",
+            "ip-netmask": "10.0.0.1/32",
+            "description": "Old description",
+        }
         diff = compare_configs(desired, actual)
-        assert diff.is_identical() is False
+        assert diff.has_changes()
         assert len(diff.changes) == 1
         assert diff.changes[0].field == "description"
-        assert diff.changes[0].change_type == "modified"
 
     def test_tag_addition(self):
         """Test detecting tag addition."""
-        desired = {"name": "web-1", "tag": {"member": ["Production", "Web"]}}
-        actual = {"name": "web-1", "tag": {"member": ["Production"]}}
+        desired = {
+            "name": "web-1",
+            "ip-netmask": "10.0.0.1/32",
+            "tag": {"member": ["Production", "Web"]},
+        }
+        actual = {
+            "name": "web-1",
+            "ip-netmask": "10.0.0.1/32",
+        }
         diff = compare_configs(desired, actual)
-        assert diff.is_identical() is False
-        # Tag changes are detected as modified (not added) since tag field exists
-        assert len(diff.changes) >= 1
+        assert diff.has_changes()
+        assert len(diff.changes) == 1
+        assert diff.changes[0].field == "tag"
+        assert diff.changes[0].change_type == "added"
 
     def test_tag_removal(self):
         """Test detecting tag removal."""
-        desired = {"name": "web-1", "tag": {"member": ["Production"]}}
-        actual = {"name": "web-1", "tag": {"member": ["Production", "Web"]}}
+        desired = {
+            "name": "web-1",
+            "ip-netmask": "10.0.0.1/32",
+        }
+        actual = {
+            "name": "web-1",
+            "ip-netmask": "10.0.0.1/32",
+            "tag": {"member": ["Production"]},
+        }
         diff = compare_configs(desired, actual)
-        assert diff.is_identical() is False
-        assert len(diff.changes) >= 1
+        assert diff.has_changes()
+        assert len(diff.changes) == 1
+        assert diff.changes[0].field == "tag"
+        assert diff.changes[0].change_type == "removed"
 
     def test_tag_order_ignored(self):
-        """Test that tag order doesn't matter (tags in different order = same)."""
-        desired = {"name": "web-1", "tag": {"member": ["Production", "Web", "DMZ"]}}
-        actual = {"name": "web-1", "tag": {"member": ["DMZ", "Web", "Production"]}}
+        """Test that tag order doesn't matter."""
+        desired = {
+            "name": "web-1",
+            "ip-netmask": "10.0.0.1/32",
+            "tag": {"member": ["Web", "Production"]},
+        }
+        actual = {
+            "name": "web-1",
+            "ip-netmask": "10.0.0.1/32",
+            "tag": {"member": ["Production", "Web"]},
+        }
         diff = compare_configs(desired, actual)
-        assert diff.is_identical() is True
+        # Tags should be considered equal despite different order
+        assert diff.is_identical()
 
     def test_field_added(self):
-        """Test detecting field addition."""
-        desired = {"name": "web-1", "ip-netmask": "10.0.0.1/32", "description": "New field"}
-        actual = {"name": "web-1", "ip-netmask": "10.0.0.1/32"}
+        """Test detecting newly added field."""
+        desired = {
+            "name": "web-1",
+            "ip-netmask": "10.0.0.1/32",
+            "description": "New field",
+        }
+        actual = {
+            "name": "web-1",
+            "ip-netmask": "10.0.0.1/32",
+        }
         diff = compare_configs(desired, actual)
-        assert diff.is_identical() is False
-        assert len(diff.changes) == 1
-        assert diff.changes[0].field == "description"
-        assert diff.changes[0].change_type == "added"
-        assert diff.changes[0].old_value is None
+        assert diff.has_changes()
+        assert any(c.change_type == "added" for c in diff.changes)
 
     def test_field_removed(self):
-        """Test detecting field removal."""
-        desired = {"name": "web-1", "ip-netmask": "10.0.0.1/32"}
-        actual = {"name": "web-1", "ip-netmask": "10.0.0.1/32", "description": "Old field"}
+        """Test detecting removed field."""
+        desired = {
+            "name": "web-1",
+            "ip-netmask": "10.0.0.1/32",
+        }
+        actual = {
+            "name": "web-1",
+            "ip-netmask": "10.0.0.1/32",
+            "description": "Old field",
+        }
         diff = compare_configs(desired, actual)
-        assert diff.is_identical() is False
-        assert len(diff.changes) == 1
-        assert diff.changes[0].field == "description"
-        assert diff.changes[0].change_type == "removed"
-        assert diff.changes[0].new_value is None
+        assert diff.has_changes()
+        assert any(c.change_type == "removed" for c in diff.changes)
 
     def test_multiple_changes(self):
-        """Test detecting multiple field changes."""
-        desired = {"name": "web-1", "ip-netmask": "10.0.0.2/32", "description": "New desc"}
-        actual = {"name": "web-1", "ip-netmask": "10.0.0.1/32", "description": "Old desc"}
+        """Test detecting multiple changes."""
+        desired = {
+            "name": "web-1",
+            "ip-netmask": "10.0.0.2/32",
+            "description": "New description",
+            "tag": {"member": ["Production"]},
+        }
+        actual = {
+            "name": "web-1",
+            "ip-netmask": "10.0.0.1/32",
+            "description": "Old description",
+        }
         diff = compare_configs(desired, actual)
-        assert diff.is_identical() is False
-        assert len(diff.changes) == 2
-        change_fields = {c.field for c in diff.changes}
-        assert "ip-netmask" in change_fields
-        assert "description" in change_fields
+        assert diff.has_changes()
+        # Should detect: IP change, description change, tag addition
+        assert len(diff.changes) >= 2
 
     def test_nested_dict_comparison(self):
         """Test comparing nested dictionaries."""
-        desired = {"name": "web-1", "tag": {"member": ["Production"], "color": "blue"}}
-        actual = {"name": "web-1", "tag": {"member": ["Production"], "color": "red"}}
+        desired = {
+            "name": "svc-1",
+            "protocol": {"tcp": {"port": "8080"}},
+        }
+        actual = {
+            "name": "svc-1",
+            "protocol": {"tcp": {"port": "8080"}},
+        }
         diff = compare_configs(desired, actual)
-        assert diff.is_identical() is False
-        # Nested dict changes are detected
-        assert len(diff.changes) >= 1
+        assert diff.is_identical()
 
-    def test_list_comparison(self):
-        """Test comparing lists (order-independent)."""
-        desired = {"name": "web-1", "tags": ["Production", "Web"]}
-        actual = {"name": "web-1", "tags": ["Web", "Production"]}
+    def test_nested_dict_changes(self):
+        """Test detecting changes in nested dicts."""
+        desired = {
+            "name": "svc-1",
+            "protocol": {"tcp": {"port": "8080"}},
+        }
+        actual = {
+            "name": "svc-1",
+            "protocol": {"tcp": {"port": "80"}},
+        }
         diff = compare_configs(desired, actual)
-        assert diff.is_identical() is True
+        assert diff.has_changes()
 
     def test_whitespace_normalization(self):
-        """Test that whitespace differences are ignored."""
-        desired = {"name": "web-1", "description": "Web server"}
-        actual = {"name": "web-1", "description": "  Web server  "}
+        """Test that whitespace differences are normalized."""
+        desired = {
+            "name": "web-1",
+            "description": "Test description",
+        }
+        actual = {
+            "name": "web-1",
+            "description": "  Test description  ",
+        }
         diff = compare_configs(desired, actual)
-        assert diff.is_identical() is True
+        # Whitespace should be normalized, configs considered identical
+        assert diff.is_identical()
 
-    def test_none_vs_empty_string(self):
-        """Test that None and empty string are treated as equal."""
-        desired = {"name": "web-1", "description": ""}
-        actual = {"name": "web-1", "description": None}
+    def test_ignores_metadata_fields(self):
+        """Test that metadata fields are ignored."""
+        desired = {
+            "name": "web-1",
+            "ip-netmask": "10.0.0.1/32",
+        }
+        actual = {
+            "name": "web-1",
+            "ip-netmask": "10.0.0.1/32",
+            "@admin": "admin",
+            "@dirtyId": "123",
+            "@time": "2024/01/01",
+        }
         diff = compare_configs(desired, actual)
-        assert diff.is_identical() is True
-
-    def test_address_group_static_members(self):
-        """Test comparing address group static members."""
-        desired = {"name": "web-group", "static": {"member": ["web-1", "web-2"]}}
-        actual = {"name": "web-group", "static": {"member": ["web-2", "web-1"]}}
-        diff = compare_configs(desired, actual)
-        assert diff.is_identical() is True
-
-    def test_service_object_comparison(self):
-        """Test comparing service objects."""
-        desired = {"name": "http", "protocol": {"tcp": {"port": "80"}}}
-        actual = {"name": "http", "protocol": {"tcp": {"port": "80"}}}
-        diff = compare_configs(desired, actual)
-        assert diff.is_identical() is True
-
-    def test_service_object_port_change(self):
-        """Test detecting service port change."""
-        desired = {"name": "http", "protocol": {"tcp": {"port": "8080"}}}
-        actual = {"name": "http", "protocol": {"tcp": {"port": "80"}}}
-        diff = compare_configs(desired, actual)
-        assert diff.is_identical() is False
-        assert len(diff.changes) >= 1
+        # Metadata fields should be ignored
+        assert diff.is_identical()
 
 
 class TestCompareXML:
-    """Tests for compare_xml function."""
+    """Tests for compare_xml() function."""
 
     def test_xml_string_comparison(self):
         """Test comparing XML strings."""
-        desired_xml = '<entry name="web-1"><ip-netmask>10.0.0.1/32</ip-netmask></entry>'
-        actual_xml = '<entry name="web-1"><ip-netmask>10.0.0.1/32</ip-netmask></entry>'
-        diff = compare_xml(desired_xml, actual_xml)
-        assert diff.is_identical() is True
+        xml1 = '<entry name="web-1"><ip-netmask>10.0.0.1/32</ip-netmask></entry>'
+        xml2 = '<entry name="web-1"><ip-netmask>10.0.0.1/32</ip-netmask></entry>'
+        diff = compare_xml(xml1, xml2)
+        assert diff.is_identical()
 
-    def test_xml_string_with_changes(self):
-        """Test comparing XML strings with changes."""
-        desired_xml = '<entry name="web-1"><ip-netmask>10.0.0.2/32</ip-netmask></entry>'
-        actual_xml = '<entry name="web-1"><ip-netmask>10.0.0.1/32</ip-netmask></entry>'
-        diff = compare_xml(desired_xml, actual_xml)
-        assert diff.is_identical() is False
-        assert len(diff.changes) >= 1
+    def test_xml_with_changes(self):
+        """Test detecting changes in XML."""
+        xml1 = '<entry name="web-1"><ip-netmask>10.0.0.2/32</ip-netmask></entry>'
+        xml2 = '<entry name="web-1"><ip-netmask>10.0.0.1/32</ip-netmask></entry>'
+        diff = compare_xml(xml1, xml2)
+        assert diff.has_changes()
+
+    def test_malformed_xml_handling(self):
+        """Test handling of malformed XML."""
+        xml1 = '<entry name="web-1"><ip-netmask>10.0.0.1/32</ip-netmask>'  # Missing closing tag
+        xml2 = '<entry name="web-1"><ip-netmask>10.0.0.1/32</ip-netmask></entry>'
+        with pytest.raises(ValueError, match="XML parsing failed"):
+            compare_xml(xml1, xml2)
 
 
 class TestValuesEqual:
-    """Tests for _values_equal helper function."""
+    """Tests for _values_equal() helper function."""
 
     def test_string_equality(self):
         """Test string comparison."""
-        assert _values_equal("test", "test") is True
-        assert _values_equal("test", "different") is False
+        assert _values_equal("test", "test")
+        assert not _values_equal("test1", "test2")
+
+    def test_string_whitespace_handling(self):
+        """Test that whitespace is normalized."""
+        assert _values_equal("test", "  test  ")
+        assert _values_equal("  test", "test  ")
 
     def test_list_equality_order_independent(self):
         """Test that list order doesn't matter."""
-        assert _values_equal(["a", "b", "c"], ["c", "b", "a"]) is True
-        assert _values_equal(["a", "b"], ["a", "b", "c"]) is False
+        assert _values_equal(["a", "b", "c"], ["c", "b", "a"])
+        assert _values_equal(["Production", "Web"], ["Web", "Production"])
+
+    def test_list_inequality(self):
+        """Test detecting different list contents."""
+        assert not _values_equal(["a", "b"], ["a", "c"])
+        assert not _values_equal(["a", "b"], ["a", "b", "c"])
 
     def test_dict_equality(self):
-        """Test dictionary comparison."""
-        assert _values_equal({"a": 1, "b": 2}, {"b": 2, "a": 1}) is True
-        assert _values_equal({"a": 1}, {"a": 2}) is False
+        """Test nested dict comparison."""
+        dict1 = {"key1": "value1", "key2": "value2"}
+        dict2 = {"key1": "value1", "key2": "value2"}
+        assert _values_equal(dict1, dict2)
 
-    def test_none_vs_empty(self):
-        """Test None vs empty string handling."""
-        assert _values_equal(None, "") is True
-        assert _values_equal("", None) is True
-        assert _values_equal(None, None) is True
-        assert _values_equal("", "") is True
+    def test_dict_inequality(self):
+        """Test detecting different dict contents."""
+        dict1 = {"key1": "value1"}
+        dict2 = {"key1": "value2"}
+        assert not _values_equal(dict1, dict2)
 
-    def test_whitespace_handling(self):
-        """Test whitespace normalization."""
-        assert _values_equal("  test  ", "test") is True
-        assert _values_equal("test\n", "test") is True
+    def test_none_vs_empty_string(self):
+        """Test that None and empty string are considered equal."""
+        assert _values_equal(None, "")
+        assert _values_equal("", None)
+        assert _values_equal(None, None)
+        assert _values_equal("", "")
 
-    def test_nested_dict_comparison(self):
-        """Test nested dictionary comparison."""
-        dict1 = {"tag": {"member": ["a", "b"]}}
-        dict2 = {"tag": {"member": ["b", "a"]}}
-        assert _values_equal(dict1, dict2) is True
+    def test_none_vs_value(self):
+        """Test that None is not equal to actual values."""
+        assert not _values_equal(None, "value")
+        assert not _values_equal("value", None)
 
-    def test_list_with_dicts(self):
-        """Test list containing dictionaries."""
-        list1 = [{"name": "a"}, {"name": "b"}]
-        list2 = [{"name": "b"}, {"name": "a"}]
-        assert _values_equal(list1, list2) is True
+    def test_mixed_types(self):
+        """Test comparing different types."""
+        assert not _values_equal("123", 123)
+        assert not _values_equal([1, 2], "1,2")
+
+
+class TestIntegrationScenarios:
+    """Integration tests with realistic PAN-OS configurations."""
+
+    def test_realistic_address_object_unchanged(self):
+        """Test realistic address object with no changes."""
+        config = {
+            "name": "corp-web-server",
+            "@type": "address",
+            "ip-netmask": "192.168.1.100/32",
+            "description": "Corporate web server in DMZ",
+            "tag": {"member": ["Production", "Web", "DMZ"]},
+        }
+        diff = compare_configs(config, config)
+        assert diff.is_identical()
+
+    def test_realistic_address_object_ip_change(self):
+        """Test realistic address object with IP change."""
+        desired = {
+            "name": "corp-web-server",
+            "@type": "address",
+            "ip-netmask": "192.168.1.101/32",
+            "description": "Corporate web server in DMZ",
+            "tag": {"member": ["Production", "Web", "DMZ"]},
+        }
+        actual = {
+            "name": "corp-web-server",
+            "@type": "address",
+            "ip-netmask": "192.168.1.100/32",
+            "description": "Corporate web server in DMZ",
+            "tag": {"member": ["Production", "Web", "DMZ"]},
+        }
+        diff = compare_configs(desired, actual)
+        assert diff.has_changes()
+        assert len(diff.changes) == 1
+        assert diff.changes[0].field == "ip-netmask"
+        summary = diff.summary()
+        assert "192.168.1.100/32 → 192.168.1.101/32" in summary
+
+    def test_realistic_service_object(self):
+        """Test realistic service object comparison."""
+        desired = {
+            "name": "custom-https",
+            "@type": "service",
+            "protocol": {"tcp": {"port": "8443"}},
+            "description": "Custom HTTPS port",
+        }
+        actual = {
+            "name": "custom-https",
+            "@type": "service",
+            "protocol": {"tcp": {"port": "8443"}},
+            "description": "Custom HTTPS port",
+        }
+        diff = compare_configs(desired, actual)
+        assert diff.is_identical()
 

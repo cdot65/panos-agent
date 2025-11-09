@@ -122,7 +122,10 @@ async def check_existence(state: CRUDState) -> CRUDState:
 
     try:
         client = await get_panos_client()
-        xpath = build_xpath(state["object_type"], name=state["object_name"])
+        device_context = state.get("device_context")
+        xpath = build_xpath(
+            state["object_type"], name=state["object_name"], device_context=device_context
+        )
 
         # Try to get the config
         try:
@@ -363,7 +366,8 @@ async def create_object(state: CRUDState) -> CRUDState:
 
     try:
         client = await get_panos_client()
-        xpath = build_xpath(state["object_type"])
+        device_context = state.get("device_context")
+        xpath = build_xpath(state["object_type"], device_context=device_context)
 
         # Build XML element
         element = build_object_xml(state["object_type"], state["data"])
@@ -425,7 +429,10 @@ async def read_object(state: CRUDState) -> CRUDState:
 
     try:
         client = await get_panos_client()
-        xpath = build_xpath(state["object_type"], name=state["object_name"])
+        device_context = state.get("device_context")
+        xpath = build_xpath(
+            state["object_type"], name=state["object_name"], device_context=device_context
+        )
 
         # Get config
         result = await get_config(xpath, client)
@@ -485,7 +492,10 @@ async def update_object(state: CRUDState) -> CRUDState:
 
     try:
         client = await get_panos_client()
-        xpath = build_xpath(state["object_type"], name=state["object_name"])
+        device_context = state.get("device_context")
+        xpath = build_xpath(
+            state["object_type"], name=state["object_name"], device_context=device_context
+        )
 
         # Merge name from object_name if not in data
         update_data = {**state["data"]}
@@ -567,7 +577,10 @@ async def delete_object(state: CRUDState) -> CRUDState:
 
     try:
         client = await get_panos_client()
-        xpath = build_xpath(state["object_type"], name=state["object_name"])
+        device_context = state.get("device_context")
+        xpath = build_xpath(
+            state["object_type"], name=state["object_name"], device_context=device_context
+        )
 
         # Delete config
         await delete_config(xpath, client)
@@ -619,7 +632,8 @@ async def list_objects(state: CRUDState) -> CRUDState:
 
     try:
         client = await get_panos_client()
-        xpath = build_xpath(state["object_type"])
+        device_context = state.get("device_context")
+        xpath = build_xpath(state["object_type"], device_context=device_context)
 
         # Get all objects
         result = await get_config(xpath, client)

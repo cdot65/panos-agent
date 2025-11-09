@@ -42,30 +42,99 @@ def build_xpath(
     name: Optional[str] = None,
     location: str = "vsys1",
     rule_base: Optional[str] = None,
+    device_context: Optional["DeviceContext"] = None,
 ) -> str:
     """Build XPath for PAN-OS configuration objects.
+
+    Supports both firewall and Panorama XPath generation based on device context.
+    For Panorama, generates paths for shared, device-group, or template contexts.
 
     Args:
         object_type: Type of object (address, service, security-policy, etc.)
         name: Optional specific object name
-        location: Virtual system location (default: vsys1)
+        location: Virtual system location (default: vsys1) - used for firewall
         rule_base: For policies, the rulebase type (security, nat, etc.)
+        device_context: Device context dict with device_type, vsys, device_group, template
 
     Returns:
         XPath string
     """
+    from src.core.panos_models import DeviceType
+
+    # Determine device type and context from device_context or defaults
+    device_type = DeviceType.FIREWALL
+    vsys = location  # Default to provided location
+    device_group = None
+    template = None
+
+    if device_context:
+        device_type = device_context.get("device_type", DeviceType.FIREWALL)
+        vsys = device_context.get("vsys", location)
+        device_group = device_context.get("device_group")
+        template = device_context.get("template")
+
+    # Panorama XPath generation
+    if device_type == DeviceType.PANORAMA:
+        # Panorama paths depend on context (shared, device-group, template)
+        if device_group:
+            # Device group context
+            base_device_path = f"/config/devices/entry[@name='localhost.localdomain']/device-group/entry[@name='{device_group}']"
+            if vsys and vsys != "shared":
+                # Multi-vsys device group
+                base_path = f"{base_device_path}/vsys/entry[@name='{vsys}']"
+            else:
+                # Shared device group (no vsys)
+                base_path = base_device_path
+        elif template:
+            # Template context
+            base_path = f"/config/devices/entry[@name='localhost.localdomain']/template/entry[@name='{template}']/config"
+            if vsys and vsys != "shared":
+                base_path = f"{base_path}/vsys/entry[@name='{vsys}']"
+        else:
+            # Shared context (default for Panorama)
+            base_path = "/config/shared"
+
+        # Build object-specific paths
+        object_paths = {
+            "address": f"{base_path}/address",
+            "address-group": f"{base_path}/address-group",
+            "service": f"{base_path}/service",
+            "service-group": f"{base_path}/service-group",
+            "tag": f"{base_path}/tag",
+        }
+
+        # Policy rules
+        if object_type in ["security-policy", "nat-policy"]:
+            policy_type = "security" if object_type == "security-policy" else "nat"
+            if device_group and vsys:
+                # Device group with vsys - policies are in rulebase
+                base = f"{base_path}/rulebase/{policy_type}/rules"
+            else:
+                # Shared or template - policies may be in different location
+                base = f"{base_path}/rulebase/{policy_type}/rules"
+            if name:
+                return f"{base}/entry[@name='{name}']"
+            return base
+
+        if object_type in object_paths:
+            base = object_paths[object_type]
+            if name:
+                return f"{base}/entry[@name='{name}']"
+            return base
+
+    # Firewall XPath generation (default)
     base_paths = {
-        "address": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{location}']/address",
-        "address-group": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{location}']/address-group",
-        "service": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{location}']/service",
-        "service-group": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{location}']/service-group",
-        "tag": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{location}']/tag",
+        "address": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{vsys}']/address",
+        "address-group": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{vsys}']/address-group",
+        "service": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{vsys}']/service",
+        "service-group": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{vsys}']/service-group",
+        "tag": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{vsys}']/tag",
     }
 
     # Policy rules have different paths
     if object_type in ["security-policy", "nat-policy"]:
         policy_type = "security" if object_type == "security-policy" else "nat"
-        base = f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{location}']/rulebase/{policy_type}/rules"
+        base = f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{vsys}']/rulebase/{policy_type}/rules"
         if name:
             return f"{base}/entry[@name='{name}']"
         return base

@@ -9,6 +9,7 @@ from typing import Optional
 
 from langchain_core.tools import tool
 
+from src.core.client import get_device_context
 from src.core.subgraphs.crud import create_crud_subgraph
 
 
@@ -52,6 +53,9 @@ async def address_create(
         data["tag"] = tag
 
     try:
+        # Get device context for XPath generation
+        device_context = await get_device_context()
+
         result = await crud_graph.ainvoke(
             {
                 "operation_type": "create",
@@ -59,6 +63,7 @@ async def address_create(
                 "data": data,
                 "object_name": name,
                 "mode": mode,
+                "device_context": device_context,
             },
             config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
@@ -83,12 +88,16 @@ async def address_read(name: str) -> str:
     crud_graph = create_crud_subgraph()
 
     try:
+        # Get device context for XPath generation
+        device_context = await get_device_context()
+
         result = await crud_graph.ainvoke(
             {
                 "operation_type": "read",
                 "object_type": "address",
                 "object_name": name,
                 "data": None,
+                "device_context": device_context,
             },
             config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )

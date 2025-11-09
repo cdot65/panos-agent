@@ -922,12 +922,507 @@ LangGraph v1.0.0 documentation files against the current PAN-OS agent implementa
 
 ---
 
-## Phase 3: Optional Enhancements (5-9 hours)
+## Phase 3: PAN-OS/Panorama Architecture Refactoring (24-32 hours)
+
+**Priority:** HIGH - Production capabilities for Panorama and multi-vsys environments
+**Goal:** Full support for Panorama management, multi-vsys firewalls, operational commands, and log retrieval
+
+**User Decisions:**
+
+- ✅ Foundation-first approach (device detection → validation → caching → features)
+- ✅ Support BOTH Panorama AND multi-vsys firewalls
+- ✅ Always require HITL approval for Panorama push-to-devices operations
+- ✅ Batch log queries for traffic, threat, and system logs (no real-time streaming)
+
+### 3.1 Foundation Layer (6-8 hours)
+
+**Priority:** CRITICAL - Foundation for all Phase 3 work
+**Dependencies:** None
+**Can Run in Parallel:** No (blocks other Phase 3 tasks)
+
+#### 3.1.1 Device Type Detection (2-3h) ✅ COMPLETE
+
+- [x] **Detect Panorama vs PAN-OS at connection**
+  - [x] Parse `<show><system><info>` for model field
+  - [x] Create `DeviceType` enum: `FIREWALL`, `PANORAMA`
+  - [x] Store in connection state: `device_type`, `model`, `serial`
+  - **File:** `src/core/client.py` ✅
+
+- [x] **Add device info model**
+  - [x] Create `DeviceInfo` Pydantic model
+  - [x] Fields: `hostname`, `version`, `serial`, `model`, `device_type`, `platform`
+  - **File:** `src/core/panos_models.py` ✅
+
+- [x] **Update state schemas**
+  - [x] Add `DeviceContext` TypedDict to `state_schemas.py`
+  - [x] Add `device_context` to `AutonomousState`
+  - [x] Add `device_context` to `DeterministicState`
+  - [x] Include: `device_type`, `hostname`, `model`, `version`, `serial`, `vsys`, `device_group`, `template`, `platform`
+  - **File:** `src/core/state_schemas.py` ✅
+
+- [x] **Pass device context to tools**
+  - [x] Create `device_info_to_context()` helper function
+  - [x] Create `get_device_context()` convenience function
+  - [x] Add `initialize_device_context` node to autonomous graph
+  - [x] Add `initialize_device_context` node to deterministic graph
+  - [x] Wire nodes into graph flow (START → initialize → agent/workflow)
+  - **Files:** `src/core/client.py`, `src/autonomous_graph.py`, `src/deterministic_graph.py` ✅
+
+- [x] **Add tests**
+  - [x] Test device context conversion (8 tests)
+  - [x] Test `get_device_context()` function (4 tests)
+  - [x] Test device type detection logic (5 tests)
+  - [x] 17 passing tests total
+  - **File:** `tests/unit/test_device_context.py` ✅
+
+**Acceptance Criteria:**
+
+- [x] Agent auto-detects Panorama vs firewall ✅
+- [x] Device context available in graph state ✅
+- [x] Device context initialized at graph start ✅
+- [x] 17 tests for device detection and context propagation ✅
+
+**Implementation Summary:**
+- Created `DeviceContext` TypedDict with 9 fields
+- Added device_context field to both AutonomousState and DeterministicState
+- Created helper functions for context conversion and retrieval
+- Added initialization nodes to both graphs
+- 17 comprehensive tests with 100% pass rate
+- State schemas now have 96% test coverage
+
+#### 3.1.2 XML Schema Validation (2h)
+
+- [ ] **Enhance existing validation**
+  - [ ] Review `src/core/xml_validation.py` (already exists)
+  - [ ] Add pre-submission validation hooks
+  - **File:** `src/core/xml_validation.py`
+
+- [ ] **Integrate validation into API layer**
+  - [ ] Call validation before `set_config()`
+  - [ ] Call validation before `edit_config()`
+  - [ ] Return user-friendly validation errors
+  - **File:** `src/core/panos_api.py`
+
+- [ ] **Add comprehensive tests**
+  - [ ] Test all object types
+  - [ ] Test invalid XML detection
+  - [ ] Test error messages
+  - **File:** `tests/unit/test_xml_validation.py`
+
+**Acceptance Criteria:**
+
+- [ ] All config mutations validated before submission
+- [ ] Clear validation error messages
+- [ ] 20+ validation tests
+
+#### 3.1.3 Config Retrieval Caching (2-3h)
+
+- [ ] **Implement cache layer in store**
+  - [ ] Add `cache_config(hostname, xpath, xml, ttl=60)`
+  - [ ] Add `get_cached_config(hostname, xpath)`
+  - [ ] Add `invalidate_cache(hostname, xpath=None)`
+  - **File:** `src/core/memory_store.py`
+
+- [ ] **Integrate caching in CRUD**
+  - [ ] Check cache in `check_existence()`
+  - [ ] Check cache in `read_object()`
+  - [ ] Invalidate on create/update/delete
+  - **File:** `src/core/subgraphs/crud.py`
+
+- [ ] **Add TTL management**
+  - [ ] 60-second default TTL
+  - [ ] Timestamp-based expiration
+  - [ ] Manual invalidation on mutations
+  - **File:** `src/core/memory_store.py`
+
+- [ ] **Add tests**
+  - [ ] Test cache hit/miss
+  - [ ] Test TTL expiration
+  - [ ] Test invalidation
+  - **File:** `tests/unit/test_memory_store.py`
+
+**Acceptance Criteria:**
+
+- [ ] Config queries use cache (60s TTL)
+- [ ] Mutations invalidate cache
+- [ ] 50%+ reduction in API calls for repeated queries
+- [ ] 15+ caching tests
+
+---
+
+### 3.2 Enhanced Workflows (4-5 hours)
+
+**Priority:** HIGH - Better user experience
+**Dependencies:** Task 3.1 (needs caching)
+**Can Run in Parallel:** After 3.1 complete
+
+#### 3.2.1 Improved Validation Logic (2h)
+
+- [ ] **Graceful handling of existing configs**
+  - [ ] Check cache/firewall before create
+  - [ ] Show clear "already exists" message
+  - [ ] Don't treat as error (status: skipped)
+  - **File:** `src/core/subgraphs/deterministic.py`
+
+- [ ] **Enhanced skip messages**
+  - [ ] Show what was skipped and why
+  - [ ] Include object details (IP, port, etc.)
+  - [ ] Differentiate: unchanged vs already exists
+  - **File:** `src/core/subgraphs/crud.py`
+
+- [ ] **Approval gates for updates**
+  - [ ] Detect config changes
+  - [ ] Show diff before applying
+  - [ ] Request approval if diff detected
+  - **File:** `src/core/subgraphs/deterministic.py`
+
+**Acceptance Criteria:**
+
+- [ ] Existing configs show as "skipped" not "error"
+- [ ] Clear skip reasons in workflow summary
+- [ ] Update diffs shown before approval
+
+#### 3.2.2 Update Detection Engine (2-3h)
+
+- [ ] **Create diff engine**
+  - [ ] Create `src/core/diff_engine.py`
+  - [ ] Function: `compare_xml(desired, actual) -> Diff`
+  - [ ] Field-level comparison (not just XML string compare)
+  - [ ] Return: changed fields, old values, new values
+
+- [ ] **Integrate into update operations**
+  - [ ] Call diff engine in `update_object()`
+  - [ ] Show diff summary: "IP changed: 10.0.1.1 → 10.0.1.2"
+  - [ ] Status: `updated` vs `skipped` (if unchanged)
+  - **File:** `src/core/subgraphs/crud.py`
+
+- [ ] **Enhanced workflow status**
+  - [ ] Add update detection to step evaluation
+  - [ ] Show: ✏️ Update detected vs ⏭️ Skipped (unchanged)
+  - **File:** `src/core/subgraphs/deterministic.py`
+
+- [ ] **Add tests**
+  - [ ] Test field-level diffs
+  - [ ] Test no-change detection
+  - [ ] Test multi-field changes
+  - **File:** `tests/unit/test_diff_engine.py` (NEW)
+
+**Acceptance Criteria:**
+
+- [ ] Diff engine shows field-level changes
+- [ ] Workflows skip unchanged objects
+- [ ] 20+ diff tests
+
+---
+
+### 3.3 Panorama Support (8-10 hours)
+
+**Priority:** HIGH - Core Panorama functionality
+**Dependencies:** Task 3.1 (needs device detection)
+**Can Run in Parallel:** After 3.1 complete
+
+#### 3.3.1 Panorama XPath Definitions (4-5h)
+
+- [ ] **Add Panorama XPath functions**
+  - [ ] `get_panorama_xpath(object_type, context, name)`
+  - [ ] Contexts: `shared`, `device_group`, `template`, `template_stack`
+  - [ ] Auto-detect context from device state
+  - **File:** `src/core/panos_xpath_map.py`
+
+- [ ] **Panorama XPath patterns**
+  - [ ] Shared: `/config/shared/{object_type}/entry[@name='{name}']`
+  - [ ] Device Group: `/config/devices/entry[@name='localhost.localdomain']/device-group/entry[@name='{dg}']/...`
+  - [ ] Template: `/config/devices/entry[@name='localhost.localdomain']/template/entry[@name='{tpl}']/config/...`
+  - [ ] Template Stack: Template stack hierarchy
+
+- [ ] **Context-aware path selection**
+  - [ ] Default to `shared` for Panorama
+  - [ ] Use `device_group` if specified in state
+  - [ ] Use `template` for network configs
+  - [ ] Fallback to firewall paths if not Panorama
+
+- [ ] **Add comprehensive tests**
+  - [ ] 50+ Panorama XPath tests
+  - [ ] All contexts tested
+  - [ ] All object types tested
+  - **File:** `tests/unit/test_xpath_mapping.py`
+
+**Acceptance Criteria:**
+
+- [ ] Panorama XPaths for all contexts
+- [ ] Context-aware path selection working
+- [ ] 50+ Panorama XPath tests passing
+
+#### 3.3.2 Panorama Configuration Tools (3-4h)
+
+- [ ] **Device Group tools**
+  - [ ] `device_group_create/read/update/delete/list`
+  - [ ] Support for device assignment
+  - **File:** `src/tools/device_groups.py` (NEW)
+
+- [ ] **Template tools**
+  - [ ] `template_create/read/update/delete/list`
+  - [ ] Support for device assignment
+  - **File:** `src/tools/templates.py` (NEW)
+
+- [ ] **Template Stack tools**
+  - [ ] `template_stack_create/read/update/delete/list`
+  - [ ] Stack ordering support
+  - **File:** `src/tools/template_stacks.py` (NEW)
+
+- [ ] **Panorama operations tools**
+  - [ ] `panorama_commit_all` - commit to Panorama + devices
+  - [ ] `panorama_push_to_devices` - push config to managed firewalls
+  - [ ] Both require HITL approval gates
+  - **File:** `src/tools/panorama_operations.py` (NEW)
+
+- [ ] **Add to tool registry**
+  - [ ] Update `src/tools/__init__.py`
+  - [ ] Add to `ALL_TOOLS` list
+  - [ ] Export all new tools
+
+**Acceptance Criteria:**
+
+- [ ] 15+ Panorama tools created
+- [ ] All tools use CRUD subgraph
+- [ ] Commit-all and push operations require approval
+- [ ] Tools integrated into agent
+
+#### 3.3.3 Multi-Device Workflows (1h)
+
+- [ ] **Create Panorama workflows**
+  - [ ] Workflow: Create object in device-group → push to devices
+  - [ ] Workflow: Update template → push to firewalls
+  - [ ] Workflow: Bulk address creation across device-groups
+  - **File:** `src/workflows/panorama_workflows.py` (NEW)
+
+- [ ] **Add approval gates**
+  - [ ] Before push-to-devices: show target firewalls
+  - [ ] Approval message: "Push to 5 managed firewalls?"
+  - [ ] If rejected: stop workflow
+
+- [ ] **Job status polling**
+  - [ ] Poll commit-all job across devices
+  - [ ] Show per-device status
+  - [ ] Aggregate success/failure counts
+
+**Acceptance Criteria:**
+
+- [ ] 3+ Panorama workflows created
+- [ ] All multi-device pushes require approval
+- [ ] Job status shown per-device
+
+---
+
+### 3.4 Multi-vsys Support (3-4 hours)
+
+**Priority:** MEDIUM - Production firewall feature
+**Dependencies:** Task 3.1 (needs device detection)
+**Can Run in Parallel:** Can run parallel with 3.3
+
+#### 3.4.1 Multi-vsys XPath Support (2h)
+
+- [ ] **Add vsys parameter to XPaths**
+  - [ ] Update `get_xpath()` to accept vsys parameter
+  - [ ] Dynamic vsys injection: `entry[@name='{vsys}']`
+  - [ ] Default to `vsys1` if not specified
+  - **File:** `src/core/panos_xpath_map.py`
+
+- [ ] **Update all object XPaths**
+  - [ ] Address objects: `/config/.../vsys/entry[@name='{vsys}']/address/...`
+  - [ ] Services: `/config/.../vsys/entry[@name='{vsys}']/service/...`
+  - [ ] Policies: `/config/.../vsys/entry[@name='{vsys}']/rulebase/...`
+  - [ ] All object types
+
+- [ ] **Add tests**
+  - [ ] Test vsys1, vsys2, vsys3
+  - [ ] Test default vsys behavior
+  - [ ] Test all object types with vsys
+  - **File:** `tests/unit/test_xpath_mapping.py`
+
+**Acceptance Criteria:**
+
+- [ ] All XPaths support dynamic vsys
+- [ ] Default to vsys1
+- [ ] 30+ multi-vsys XPath tests
+
+#### 3.4.2 Vsys Detection & Selection (1-2h)
+
+- [ ] **Detect available vsys**
+  - [ ] Query `<show><system><info>` for vsys list
+  - [ ] Store in device context: `available_vsys: ['vsys1', 'vsys2']`
+  - **File:** `src/core/client.py`
+
+- [ ] **Add CLI vsys flag**
+  - [ ] Add `--vsys` option to CLI
+  - [ ] Default to vsys1
+  - [ ] Validate against available vsys
+  - **File:** `src/cli/commands.py`
+
+- [ ] **Pass vsys to tools**
+  - [ ] Include vsys in device context
+  - [ ] Tools use vsys for XPath generation
+  - [ ] Allow per-operation vsys override
+
+**Acceptance Criteria:**
+
+- [ ] Vsys auto-detected at connection
+- [ ] CLI supports --vsys flag
+- [ ] Tools work with any vsys
+
+---
+
+### 3.5 Operational Commands & Logs (3-5 hours)
+
+**Priority:** MEDIUM - Monitoring and troubleshooting
+**Dependencies:** None
+**Can Run in Parallel:** Can run parallel with 3.3/3.4
+
+#### 3.5.1 Operational Command Tools (2h)
+
+- [ ] **Show interfaces tool**
+  - [ ] `show_interfaces()` - all interfaces status
+  - [ ] Parse XML: interface name, IP, status, speed
+  - **File:** `src/tools/operational/interfaces.py` (NEW)
+
+- [ ] **Show routing tool**
+  - [ ] `show_routing_table()` - routing table
+  - [ ] Parse XML: destination, next-hop, interface, metric
+  - **File:** `src/tools/operational/routing.py` (NEW)
+
+- [ ] **Show sessions tool**
+  - [ ] `show_sessions(source=None, dest=None, app=None)` - active sessions
+  - [ ] Support filters
+  - [ ] Parse XML: source, dest, app, state, duration
+  - **File:** `src/tools/operational/sessions.py` (NEW)
+
+- [ ] **Show system tool**
+  - [ ] `show_system_resources()` - CPU, memory, disk
+  - [ ] Parse XML: cpu_percent, mem_percent, disk_percent
+  - **File:** `src/tools/operational/system.py` (NEW)
+
+- [ ] **Add to tool registry**
+  - [ ] Create `src/tools/operational/__init__.py`
+  - [ ] Export all operational tools
+  - [ ] Add to `ALL_TOOLS`
+
+**Acceptance Criteria:**
+
+- [ ] 4+ operational command tools
+- [ ] All tools return structured data
+- [ ] Tools work on firewall and Panorama
+
+#### 3.5.2 Log Query Tools (2-3h)
+
+- [ ] **Add log query API function**
+  - [ ] `async def query_logs(log_type, query, nlogs=100, skip=0)`
+  - [ ] Build XML: `<query><{log_type}><query>{query}</query></{log_type}></query>`
+  - [ ] Parse response: extract log entries
+  - **File:** `src/core/panos_api.py`
+
+- [ ] **Traffic log tool**
+  - [ ] `query_traffic_logs(source=None, dest=None, app=None, limit=100)`
+  - [ ] Build query filter: `(addr.src in 10.0.0.0/8) and (app eq 'web-browsing')`
+  - [ ] Parse XML to structured logs
+  - **File:** `src/tools/logs/traffic.py` (NEW)
+
+- [ ] **Threat log tool**
+  - [ ] `query_threat_logs(threat_type=None, severity=None, limit=100)`
+  - [ ] Support filters: virus, spyware, vulnerability, url, wildfire
+  - [ ] Parse XML to structured logs
+  - **File:** `src/tools/logs/threat.py` (NEW)
+
+- [ ] **System log tool**
+  - [ ] `query_system_logs(event_type=None, limit=100)`
+  - [ ] Support filters: config, system, auth
+  - [ ] Parse XML to structured logs
+  - **File:** `src/tools/logs/system.py` (NEW)
+
+- [ ] **Add to tool registry**
+  - [ ] Create `src/tools/logs/__init__.py`
+  - [ ] Export all log tools
+  - [ ] Add to `ALL_TOOLS`
+
+**Acceptance Criteria:**
+
+- [ ] 3 log query tools (traffic, threat, system)
+- [ ] All tools support filters
+- [ ] Returns structured log data (not raw XML)
+- [ ] Pagination support (limit/skip)
+
+---
+
+### 3.6 Documentation & Testing (2 hours)
+
+**Priority:** MEDIUM - User enablement
+**Dependencies:** All Phase 3 tasks
+**Can Run in Parallel:** After features complete
+
+#### 3.6.1 Update Documentation (1h)
+
+- [ ] **Add Panorama section to README**
+  - [ ] Explain Panorama support
+  - [ ] Show device-group/template usage
+  - [ ] Example commands
+  - **File:** `README.md`
+
+- [ ] **Create Panorama guide**
+  - [ ] Create `docs/PANORAMA.md`
+  - [ ] Comprehensive Panorama usage guide
+  - [ ] Workflow examples
+  - [ ] Best practices
+
+- [ ] **Create multi-vsys guide**
+  - [ ] Create `docs/MULTI_VSYS.md`
+  - [ ] Multi-vsys usage examples
+  - [ ] CLI flag usage
+  - [ ] Vsys selection strategies
+
+- [ ] **Update tool reference**
+  - [ ] Document all new tools
+  - [ ] Panorama tools
+  - [ ] Operational tools
+  - [ ] Log tools
+
+**Acceptance Criteria:**
+
+- [ ] README updated with Panorama info
+- [ ] 2 new comprehensive guides created
+- [ ] All tools documented
+
+#### 3.6.2 Integration Tests (1h)
+
+- [ ] **Create Panorama tests**
+  - [ ] Test device detection
+  - [ ] Test Panorama XPaths
+  - [ ] Test device-group operations
+  - **File:** `tests/integration/test_panorama.py` (NEW)
+
+- [ ] **Create multi-vsys tests**
+  - [ ] Test vsys detection
+  - [ ] Test vsys selection
+  - [ ] Test multi-vsys operations
+  - **File:** `tests/integration/test_multi_vsys.py` (NEW)
+
+- [ ] **Create operational tests**
+  - [ ] Test show commands
+  - [ ] Test log queries
+  - **File:** `tests/integration/test_operational.py` (NEW)
+
+**Acceptance Criteria:**
+
+- [ ] 50+ new integration tests
+- [ ] All Phase 3 features tested
+- [ ] Tests pass on Panorama and firewall
+
+---
+
+## Phase 4: Optional Enhancements (5-9 hours)
 
 **Priority:** LOW - Nice-to-have features for power users
 **Goal:** Enhanced developer experience and advanced features
 
-### 9. Document Agent Chat UI Integration (1-2 hours)
+### 4.1 Document Agent Chat UI Integration (1-2 hours)
 
 **Priority:** LOW
 **Dependencies:** Task 1.1-1.3 (observability must work with `langgraph dev`)
@@ -975,7 +1470,7 @@ LangGraph v1.0.0 documentation files against the current PAN-OS agent implementa
 
 ---
 
-### 10. Add Node Caching for Expensive Operations (1-2 hours)
+### 4.2 Add Node Caching for Expensive Operations (1-2 hours)
 
 **Priority:** LOW
 **Dependencies:** None
@@ -1021,7 +1516,7 @@ LangGraph v1.0.0 documentation files against the current PAN-OS agent implementa
 
 ---
 
-### 11. Add Time-Travel CLI Commands (2-3 hours)
+### 4.3 Add Time-Travel CLI Commands (2-3 hours)
 
 **Priority:** LOW
 **Dependencies:** None (infrastructure already exists via checkpointer)

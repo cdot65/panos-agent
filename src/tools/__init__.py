@@ -7,7 +7,9 @@ Includes both Firewall and Panorama tools.
 from src.tools.address_groups import ADDRESS_GROUP_TOOLS
 from src.tools.address_objects import ADDRESS_TOOLS
 from src.tools.device_groups import DEVICE_GROUP_TOOLS
+from src.tools.logs import LOG_TOOLS
 from src.tools.nat_policies import NAT_POLICY_TOOLS
+from src.tools.operational import OPERATIONAL_TOOLS
 from src.tools.orchestration.commit_operations import commit_changes
 from src.tools.orchestration.crud_operations import crud_operation
 from src.tools.panorama_operations import PANORAMA_OPERATIONS_TOOLS
@@ -32,6 +34,9 @@ ALL_TOOLS = [
     *TEMPLATE_TOOLS,  # 5 tools
     *TEMPLATE_STACK_TOOLS,  # 5 tools
     *PANORAMA_OPERATIONS_TOOLS,  # 4 tools
+    # Operational & Monitoring tools (7 tools)
+    *OPERATIONAL_TOOLS,  # 4 tools
+    *LOG_TOOLS,  # 3 tools
     # Orchestration tools (2 tools)
     crud_operation,  # Unified CRUD
     commit_changes,  # Commit workflow
@@ -51,6 +56,9 @@ __all__ = [
     "TEMPLATE_TOOLS",
     "TEMPLATE_STACK_TOOLS",
     "PANORAMA_OPERATIONS_TOOLS",
+    # Operational & Monitoring tools
+    "OPERATIONAL_TOOLS",
+    "LOG_TOOLS",
     # Orchestration
     "crud_operation",
     "commit_changes",

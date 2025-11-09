@@ -603,3 +603,52 @@ async def operational_command(cmd: str, client: httpx.AsyncClient) -> etree._Ele
 
     # Return full response element for parsing by caller
     return response.xml_element
+
+
+async def query_logs(
+    log_type: str,
+    query: str,
+    nlogs: int = 100,
+    skip: int = 0,
+    client: Optional[httpx.AsyncClient] = None,
+) -> etree._Element:
+    """Query PAN-OS logs.
+
+    Args:
+        log_type: Log type (traffic, threat, system, config, etc.)
+        query: Log query filter (PAN-OS query syntax)
+        nlogs: Number of logs to retrieve (default: 100, max: 5000)
+        skip: Number of logs to skip (for pagination)
+        client: Optional async HTTP client
+
+    Returns:
+        lxml Element with log entries
+
+    Example:
+        # Query traffic logs for web browsing
+        result = await query_logs(
+            "traffic",
+            "(addr.src in 10.0.0.0/8) and (app eq 'web-browsing')",
+            nlogs=50
+        )
+    """
+    if client is None:
+        from src.core.client import get_panos_client
+
+        client = await get_panos_client()
+
+    # Build log query XML
+    cmd = f"""
+    <show>
+      <log>
+        <{log_type}>
+          <query>{query}</query>
+          <nlogs>{nlogs}</nlogs>
+          <skip>{skip}</skip>
+        </{log_type}>
+      </log>
+    </show>
+    """
+
+    result = await operational_command(cmd.strip(), client)
+    return result

@@ -18,7 +18,7 @@ This project demonstrates two approaches to AI-driven network automation:
 ### Key Features
 
 - 🤖 **Dual-mode operation**: Autonomous (ReAct) and Deterministic (workflow-based)
-- 🔧 **Comprehensive PAN-OS support**: 33 tools across addresses, services, policies, NAT
+- 🔧 **Comprehensive PAN-OS support**: 57 tools across objects, policies, Panorama, and monitoring
 - ⚡ **Fully async architecture**: Built on `httpx` and `lxml` for high-performance I/O
 - 🎯 **LangGraph Studio integration**: Visual debugging and execution
 - 📡 **Real-time streaming**: Live progress updates with emoji indicators (default)
@@ -1368,7 +1368,7 @@ graph TD
 - [x] **Expanded policy tools**: Security policy full CRUD (5 tools)
 - [x] **NAT policy tools**: Basic NAT CRUD (4 tools)
 - [x] **Orchestration tools**: crud_operation, commit_changes
-- [x] **Total: 33 tools** across all categories
+- [x] **Total: 57 tools** across objects, policies, Panorama, and monitoring (updated Phase 3.5)
 
 ### ✅ Phase 5: Testing & Polish (Completed)
 
@@ -1506,15 +1506,17 @@ See repository root for license information.
 
 ---
 
-**Status**: ✅ Complete (All 5 phases + Phase 1 observability)
-**Features**: 33 tools, commit workflow, 6 workflows, LangSmith observability, comprehensive docs
-**Coverage**: Architecture guide, setup guide, testing examples
+**Status**: ✅ Complete (Phases 1-5 + Phase 3 enhancements)
+**Features**: 57 tools, operational monitoring, log analysis, commit workflow, 6 workflows, Panorama support
+**Coverage**: Architecture guide, setup guide, testing examples, multi-vsys support
 **Recent Updates**:
 
+- ✅ Phase 3.5: Operational commands and log query tools (7 new tools)
+- ✅ Phase 3.4: Multi-vsys support with dynamic XPath generation
+- ✅ Phase 3.3: Panorama support (device groups, templates, template stacks)
 - ✅ LangSmith environment variables and anonymizers (Phase 1.1-1.2)
-- ✅ Metadata and tags for observability (Phase 1.3)
 - ✅ Migrated from pan-os-python to httpx + lxml (fully async)
 - ✅ Added XPath validation and structure mapping
 - ✅ AsyncSqliteSaver for async checkpointing
 
-**Last Updated**: 2025-01-09
+**Last Updated**: 2025-11-09

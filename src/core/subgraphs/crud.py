@@ -533,9 +533,11 @@ def build_object_xml(object_type: str, data: dict[str, Any]) -> etree._Element:
             desc_elem = etree.SubElement(entry, "description")
             desc_elem.text = data["description"]
 
-        if data.get("tags"):
+        # Handle tags (accept both "tag" and "tags")
+        tags = data.get("tags") or data.get("tag")
+        if tags:
             tag_elem = etree.SubElement(entry, "tag")
-            for tag in data["tags"]:
+            for tag in tags:
                 member = etree.SubElement(tag_elem, "member")
                 member.text = tag
 
@@ -556,6 +558,14 @@ def build_object_xml(object_type: str, data: dict[str, Any]) -> etree._Element:
             desc_elem = etree.SubElement(entry, "description")
             desc_elem.text = data["description"]
 
+        # Handle tags (accept both "tag" and "tags")
+        tags = data.get("tags") or data.get("tag")
+        if tags:
+            tag_elem = etree.SubElement(entry, "tag")
+            for tag in tags:
+                member = etree.SubElement(tag_elem, "member")
+                member.text = tag
+
     elif object_type == "service":
         # Service object
         protocol = data.get("protocol", "tcp")
@@ -568,6 +578,14 @@ def build_object_xml(object_type: str, data: dict[str, Any]) -> etree._Element:
             desc_elem = etree.SubElement(entry, "description")
             desc_elem.text = data["description"]
 
+        # Handle tags (accept both "tag" and "tags")
+        tags = data.get("tags") or data.get("tag")
+        if tags:
+            tag_elem = etree.SubElement(entry, "tag")
+            for tag in tags:
+                member = etree.SubElement(tag_elem, "member")
+                member.text = tag
+
     elif object_type == "service-group":
         # Service group
         members_elem = etree.SubElement(entry, "members")
@@ -578,6 +596,14 @@ def build_object_xml(object_type: str, data: dict[str, Any]) -> etree._Element:
         if data.get("description"):
             desc_elem = etree.SubElement(entry, "description")
             desc_elem.text = data["description"]
+
+        # Handle tags (accept both "tag" and "tags")
+        tags = data.get("tags") or data.get("tag")
+        if tags:
+            tag_elem = etree.SubElement(entry, "tag")
+            for tag in tags:
+                member = etree.SubElement(tag_elem, "member")
+                member.text = tag
 
     elif object_type == "security-policy":
         # Security policy rule

@@ -43,7 +43,7 @@ async def service_group_create(
 
     data = {
         "name": name,
-        "value": members,
+        "members": members,
     }
 
     if description:
@@ -122,7 +122,7 @@ async def service_group_update(
 
     data = {}
     if members:
-        data["value"] = members
+        data["members"] = members
     if description:
         data["description"] = description
     if tag is not None:

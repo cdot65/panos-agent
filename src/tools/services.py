@@ -42,7 +42,7 @@ async def service_create(
     data = {
         "name": name,
         "protocol": protocol,
-        "destination_port": port,
+        "port": port,
     }
 
     if description:
@@ -125,7 +125,7 @@ async def service_update(
     if protocol:
         data["protocol"] = protocol
     if port:
-        data["destination_port"] = port
+        data["port"] = port
     if description:
         data["description"] = description
     if tag is not None:

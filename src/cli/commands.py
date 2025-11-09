@@ -221,7 +221,7 @@ def run(
                     console.print("\n[bold green]✅ Workflow Complete[/bold green]")
                     console.print("\n[bold green]Response:[/bold green]")
                     console.print(
-                        last_message.content
+                        last_message.get("content", "")
                         if isinstance(last_message, dict)
                         else last_message.content
                     )

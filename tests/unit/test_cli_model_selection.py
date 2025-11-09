@@ -112,7 +112,7 @@ class TestCLIModelFlag:
         # Verify default model was used
         assert result.exit_code == 0
         call_kwargs = mock_graph.invoke.call_args[1]
-        assert call_kwargs["config"]["configurable"]["model_name"] == "claude-3-5-sonnet-20241022"
+        assert call_kwargs["context"]["model_name"] == "claude-sonnet-4-5-20250915"
 
     @patch("src.autonomous_graph.create_autonomous_graph")
     @patch("src.core.config.get_settings")
@@ -138,7 +138,7 @@ class TestCLIModelFlag:
         # Verify Haiku model was used
         assert result.exit_code == 0
         call_kwargs = mock_graph.invoke.call_args[1]
-        assert call_kwargs["config"]["configurable"]["model_name"] == "claude-haiku-4-5"
+        assert call_kwargs["context"]["model_name"] == "claude-haiku-4-5-20251010"
 
     @patch("src.autonomous_graph.create_autonomous_graph")
     @patch("src.core.config.get_settings")
@@ -164,7 +164,7 @@ class TestCLIModelFlag:
         # Verify Opus model was used
         assert result.exit_code == 0
         call_kwargs = mock_graph.invoke.call_args[1]
-        assert call_kwargs["config"]["configurable"]["model_name"] == "claude-3-opus-20240229"
+        assert call_kwargs["context"]["model_name"] == "claude-opus-4-1-20250805"
 
     @patch("src.autonomous_graph.create_autonomous_graph")
     @patch("src.core.config.get_settings")
@@ -191,7 +191,7 @@ class TestCLIModelFlag:
         # Verify full model name was used
         assert result.exit_code == 0
         call_kwargs = mock_graph.invoke.call_args[1]
-        assert call_kwargs["config"]["configurable"]["model_name"] == full_model
+        assert call_kwargs["context"]["model_name"] == full_model
 
     @patch("src.autonomous_graph.create_autonomous_graph")
     @patch("src.core.config.get_settings")
@@ -243,7 +243,7 @@ class TestCLITemperatureFlag:
         # Verify default temperature was used
         assert result.exit_code == 0
         call_kwargs = mock_graph.invoke.call_args[1]
-        assert call_kwargs["config"]["configurable"]["temperature"] == 0.0
+        assert call_kwargs["context"]["temperature"] == 0.0
 
     @patch("src.autonomous_graph.create_autonomous_graph")
     @patch("src.core.config.get_settings")
@@ -269,7 +269,7 @@ class TestCLITemperatureFlag:
         # Verify custom temperature was used
         assert result.exit_code == 0
         call_kwargs = mock_graph.invoke.call_args[1]
-        assert call_kwargs["config"]["configurable"]["temperature"] == 0.7
+        assert call_kwargs["context"]["temperature"] == 0.7
 
     @patch("src.autonomous_graph.create_autonomous_graph")
     @patch("src.core.config.get_settings")
@@ -295,7 +295,7 @@ class TestCLITemperatureFlag:
         # Verify temperature 0.0 was used
         assert result.exit_code == 0
         call_kwargs = mock_graph.invoke.call_args[1]
-        assert call_kwargs["config"]["configurable"]["temperature"] == 0.0
+        assert call_kwargs["context"]["temperature"] == 0.0
 
     @patch("src.autonomous_graph.create_autonomous_graph")
     @patch("src.core.config.get_settings")
@@ -321,7 +321,7 @@ class TestCLITemperatureFlag:
         # Verify temperature 1.0 was used
         assert result.exit_code == 0
         call_kwargs = mock_graph.invoke.call_args[1]
-        assert call_kwargs["config"]["configurable"]["temperature"] == 1.0
+        assert call_kwargs["context"]["temperature"] == 1.0
 
     @patch("src.autonomous_graph.create_autonomous_graph")
     @patch("src.core.config.get_settings")
@@ -376,8 +376,8 @@ class TestCLIModelAndTemperatureCombined:
         # Verify both settings were applied
         assert result.exit_code == 0
         call_kwargs = mock_graph.invoke.call_args[1]
-        assert call_kwargs["config"]["configurable"]["model_name"] == "claude-haiku-4-5"
-        assert call_kwargs["config"]["configurable"]["temperature"] == 0.0
+        assert call_kwargs["context"]["model_name"] == "claude-haiku-4-5-20251010"
+        assert call_kwargs["context"]["temperature"] == 0.0
 
     @patch("src.autonomous_graph.create_autonomous_graph")
     @patch("src.core.config.get_settings")
@@ -403,8 +403,8 @@ class TestCLIModelAndTemperatureCombined:
         # Verify both settings were applied
         assert result.exit_code == 0
         call_kwargs = mock_graph.invoke.call_args[1]
-        assert call_kwargs["config"]["configurable"]["model_name"] == "claude-3-opus-20240229"
-        assert call_kwargs["config"]["configurable"]["temperature"] == 0.7
+        assert call_kwargs["context"]["model_name"] == "claude-opus-4-1-20250805"
+        assert call_kwargs["context"]["temperature"] == 0.7
 
 
 class TestCLIMetadataTracking:
@@ -436,7 +436,7 @@ class TestCLIMetadataTracking:
         call_kwargs = mock_graph.invoke.call_args[1]
         assert "metadata" in call_kwargs["config"]
         assert "model_name" in call_kwargs["config"]["metadata"]
-        assert call_kwargs["config"]["metadata"]["model_name"] == "claude-haiku-4-5"
+        assert call_kwargs["config"]["metadata"]["model_name"] == "claude-haiku-4-5-20251010"
 
     @patch("src.autonomous_graph.create_autonomous_graph")
     @patch("src.core.config.get_settings")

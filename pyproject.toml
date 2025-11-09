@@ -72,6 +72,27 @@ profile = "black"
 line_length = 100
 
 [tool.flake8]
-max-line-length = 100
-extend-ignore = ["E203", "W503"]
-exclude = [".git", "__pycache__", ".venv", "venv", "build", "dist"]
+max-line-length = 128
+extend-ignore = [
+    "E203",  # whitespace before ':' (conflicts with black)
+    "W503",  # line break before binary operator (deprecated)
+    "E501",  # line too long (handled by black)
+]
+exclude = [
+    ".git",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+    "*.egg-info",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".tox",
+]
+max-complexity = 10
+docstring-convention = "google"
+per-file-ignores = [
+    "__init__.py:F401",  # unused imports in __init__.py
+    "tests/*:D",  # no docstrings required in tests
+]

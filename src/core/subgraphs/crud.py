@@ -429,6 +429,80 @@ def _normalize_config_for_xml(object_type: str, config: dict[str, Any]) -> dict[
 
         return normalized
 
+    # For service objects, convert from {name: "x", protocol: {tcp: {port: "8080"}}}
+    # to {name: "x", protocol: "tcp", port: "8080"}
+    elif object_type == "service":
+        normalized = {"name": config.get("name", "")}
+
+        # Extract protocol and port from nested structure
+        if "protocol" in config and isinstance(config["protocol"], dict):
+            protocol_data = config["protocol"]
+            # Find which protocol (tcp/udp)
+            for proto in ["tcp", "udp"]:
+                if proto in protocol_data:
+                    normalized["protocol"] = proto
+                    # Extract port
+                    if isinstance(protocol_data[proto], dict) and "port" in protocol_data[proto]:
+                        normalized["port"] = protocol_data[proto]["port"]
+                    break
+
+        # Copy description
+        if "description" in config:
+            normalized["description"] = config["description"]
+
+        return normalized
+
+    # For address-group objects, normalize static/dynamic structure
+    elif object_type == "address-group":
+        normalized = {"name": config.get("name", "")}
+
+        # Handle static address groups: {static: {member: [...]}} -> {static_value: [...]}
+        if "static" in config:
+            static_data = config["static"]
+            if isinstance(static_data, dict) and "member" in static_data:
+                members = static_data["member"]
+                normalized["static_value"] = members if isinstance(members, list) else [members]
+
+        # Handle dynamic address groups: {dynamic: {filter: "..."}} -> {dynamic_filter: "..."}
+        if "dynamic" in config:
+            dynamic_data = config["dynamic"]
+            if isinstance(dynamic_data, dict) and "filter" in dynamic_data:
+                normalized["dynamic_filter"] = dynamic_data["filter"]
+
+        # Copy description
+        if "description" in config:
+            normalized["description"] = config["description"]
+
+        # Handle tags
+        if "tag" in config:
+            tag_data = config["tag"]
+            if isinstance(tag_data, dict) and "member" in tag_data:
+                members = tag_data["member"]
+                normalized["tags"] = members if isinstance(members, list) else [members]
+            elif isinstance(tag_data, list):
+                normalized["tags"] = tag_data
+
+        return normalized
+
+    # For service-group objects, normalize members structure
+    elif object_type == "service-group":
+        normalized = {"name": config.get("name", "")}
+
+        # Extract members from nested structure
+        if "members" in config:
+            members_data = config["members"]
+            if isinstance(members_data, dict) and "member" in members_data:
+                members = members_data["member"]
+                normalized["members"] = members if isinstance(members, list) else [members]
+            elif isinstance(members_data, list):
+                normalized["members"] = members_data
+
+        # Copy description
+        if "description" in config:
+            normalized["description"] = config["description"]
+
+        return normalized
+
     # For other object types, return as-is
     return config
 

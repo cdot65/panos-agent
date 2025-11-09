@@ -454,12 +454,23 @@ VALIDATION_RULES = {
         },
     },
     "service": {
-        "required_fields": ["name", "protocol"],
+        "required_fields": ["name", "protocol", "port"],
         "valid_protocols": ["tcp", "udp"],
         "field_validators": {
             "tcp_port": lambda v: _validate_port(v),
             "udp_port": lambda v: _validate_port(v),
         },
+    },
+    "address_group": {
+        "required_fields": ["name"],
+        "valid_types": ["static", "dynamic"],
+        # Must have either static_value (members) OR dynamic_filter
+        # static: list of address object names
+        # dynamic: filter expression for dynamic membership
+    },
+    "service_group": {
+        "required_fields": ["name", "members"],
+        # members: list of service object names
     },
     "security_policy": {
         "required_fields": [
@@ -603,6 +614,16 @@ def validate_object_data(
             return (
                 False,
                 f"Invalid action: {data['action']}. Must be one of {rules['valid_actions']}",
+            )
+
+    # Special validation for address_group: must have either static_value OR dynamic_filter
+    if object_type == "address_group" and operation_type == "create":
+        has_static = "static_value" in data and data["static_value"]
+        has_dynamic = "dynamic_filter" in data and data["dynamic_filter"]
+        if not has_static and not has_dynamic:
+            return (
+                False,
+                "address_group must have either 'static_value' (members list) or 'dynamic_filter'",
             )
 
     return True, None

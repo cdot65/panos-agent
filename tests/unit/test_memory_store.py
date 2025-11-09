@@ -9,7 +9,11 @@ import pytest
 from langgraph.store.memory import InMemoryStore
 
 from src.core.memory_store import (
+    CacheEntry,
+    cache_config,
+    get_cached_config,
     get_firewall_operation_summary,
+    invalidate_cache,
     retrieve_firewall_config,
     search_workflow_history,
     store_firewall_config,
@@ -590,3 +594,296 @@ class TestGetFirewallOperationSummary:
 
         assert summary1["total_objects"] == 10
         assert summary2["total_objects"] == 20
+
+
+class TestCacheEntry:
+    """Tests for CacheEntry dataclass."""
+
+    def test_cache_entry_is_expired(self):
+        """Test cache entry expiration check."""
+        import time
+
+        # Create entry with very short TTL
+        entry = CacheEntry(
+            xpath="/config/test",
+            xml_data="<test/>",
+            timestamp=time.time() - 100,  # 100 seconds ago
+            ttl=60,  # 60 second TTL
+        )
+        assert entry.is_expired() is True
+
+    def test_cache_entry_not_expired(self):
+        """Test cache entry not expired."""
+        import time
+
+        # Create entry that's still valid
+        entry = CacheEntry(
+            xpath="/config/test",
+            xml_data="<test/>",
+            timestamp=time.time() - 30,  # 30 seconds ago
+            ttl=60,  # 60 second TTL
+        )
+        assert entry.is_expired() is False
+
+
+class TestCacheConfig:
+    """Tests for cache_config function."""
+
+    def test_cache_config_stores_entry(self):
+        """Test that cache_config stores entry successfully."""
+        store = InMemoryStore()
+        hostname = "192.168.1.1"
+        xpath = "/config/devices/entry[@name='localhost']/vsys/entry[@name='vsys1']/address/entry[@name='web-1']"
+        xml_data = "<entry name='web-1'><ip-netmask>10.0.0.1</ip-netmask></entry>"
+
+        cache_config(hostname, xpath, xml_data, store, ttl=60)
+
+        # Verify stored (hostname is sanitized)
+        cached = get_cached_config(hostname, xpath, store)
+        assert cached == xml_data
+
+    def test_cache_config_with_custom_ttl(self):
+        """Test caching with custom TTL."""
+        store = InMemoryStore()
+        hostname = "192.168.1.1"
+        xpath = "/config/test"
+        xml_data = "<test/>"
+
+        cache_config(hostname, xpath, xml_data, store, ttl=120)
+
+        cached = get_cached_config(hostname, xpath, store)
+        assert cached == xml_data
+
+    def test_cache_config_multiple_hosts(self):
+        """Test cache isolation for different hostnames."""
+        store = InMemoryStore()
+        hostname1 = "192.168.1.1"
+        hostname2 = "192.168.1.2"
+        xpath = "/config/test"
+        xml_data1 = "<test>host1</test>"
+        xml_data2 = "<test>host2</test>"
+
+        cache_config(hostname1, xpath, xml_data1, store)
+        cache_config(hostname2, xpath, xml_data2, store)
+
+        # Verify isolation
+        cached1 = get_cached_config(hostname1, xpath, store)
+        cached2 = get_cached_config(hostname2, xpath, store)
+        assert cached1 == xml_data1
+        assert cached2 == xml_data2
+
+    def test_cache_config_overwrites_existing(self):
+        """Test that caching same xpath overwrites existing entry."""
+        store = InMemoryStore()
+        hostname = "192.168.1.1"
+        xpath = "/config/test"
+        xml_data1 = "<test>old</test>"
+        xml_data2 = "<test>new</test>"
+
+        cache_config(hostname, xpath, xml_data1, store)
+        cache_config(hostname, xpath, xml_data2, store)
+
+        cached = get_cached_config(hostname, xpath, store)
+        assert cached == xml_data2
+
+
+class TestGetCachedConfig:
+    """Tests for get_cached_config function."""
+
+    def test_get_cached_config_returns_data(self):
+        """Test retrieving cached config returns data."""
+        store = InMemoryStore()
+        hostname = "192.168.1.1"
+        xpath = "/config/test"
+        xml_data = "<test>data</test>"
+
+        cache_config(hostname, xpath, xml_data, store)
+        cached = get_cached_config(hostname, xpath, store)
+
+        assert cached == xml_data
+
+    def test_get_cached_config_miss_returns_none(self):
+        """Test cache miss returns None."""
+        store = InMemoryStore()
+        hostname = "192.168.1.1"
+        xpath = "/config/nonexistent"
+
+        cached = get_cached_config(hostname, xpath, store)
+
+        assert cached is None
+
+    def test_get_cached_config_expired_returns_none(self):
+        """Test expired cache entry returns None."""
+        import time
+
+        store = InMemoryStore()
+        hostname = "192.168.1.1"
+        xpath = "/config/test"
+        xml_data = "<test/>"
+
+        # Manually create expired entry
+        entry_dict = {
+            "xpath": xpath,
+            "xml_data": xml_data,
+            "timestamp": time.time() - 100,  # 100 seconds ago
+            "ttl": 60,  # 60 second TTL (expired)
+        }
+        from src.core.memory_store import _hash_xpath, _sanitize_namespace_label
+
+        namespace = ("config_cache", _sanitize_namespace_label(hostname))
+        cache_key = _hash_xpath(xpath)
+        store.put(namespace, cache_key, entry_dict)
+
+        # Should return None (expired)
+        cached = get_cached_config(hostname, xpath, store)
+        assert cached is None
+
+    def test_get_cached_config_valid_before_ttl(self):
+        """Test cache entry valid before TTL expiration."""
+        import time
+
+        store = InMemoryStore()
+        hostname = "192.168.1.1"
+        xpath = "/config/test"
+        xml_data = "<test/>"
+
+        # Cache with long TTL
+        cache_config(hostname, xpath, xml_data, store, ttl=300)
+
+        # Should still be valid
+        cached = get_cached_config(hostname, xpath, store)
+        assert cached == xml_data
+
+
+class TestInvalidateCache:
+    """Tests for invalidate_cache function."""
+
+    def test_invalidate_specific_xpath(self):
+        """Test invalidating specific XPath."""
+        store = InMemoryStore()
+        hostname = "192.168.1.1"
+        xpath1 = "/config/test1"
+        xpath2 = "/config/test2"
+        xml_data = "<test/>"
+
+        cache_config(hostname, xpath1, xml_data, store)
+        cache_config(hostname, xpath2, xml_data, store)
+
+        # Invalidate only xpath1
+        count = invalidate_cache(hostname, xpath1, store)
+
+        assert count == 1
+        assert get_cached_config(hostname, xpath1, store) is None
+        assert get_cached_config(hostname, xpath2, store) == xml_data
+
+    def test_invalidate_all_for_host(self):
+        """Test invalidating all cache entries for hostname."""
+        store = InMemoryStore()
+        hostname = "192.168.1.1"
+        xpath1 = "/config/test1"
+        xpath2 = "/config/test2"
+        xml_data = "<test/>"
+
+        cache_config(hostname, xpath1, xml_data, store)
+        cache_config(hostname, xpath2, xml_data, store)
+
+        # Invalidate all
+        count = invalidate_cache(hostname, None, store)
+
+        assert count == 2
+        assert get_cached_config(hostname, xpath1, store) is None
+        assert get_cached_config(hostname, xpath2, store) is None
+
+    def test_invalidate_returns_count(self):
+        """Test that invalidate_cache returns correct count."""
+        store = InMemoryStore()
+        hostname = "192.168.1.1"
+
+        # Cache multiple entries
+        for i in range(5):
+            cache_config(hostname, f"/config/test{i}", "<test/>", store)
+
+        count = invalidate_cache(hostname, None, store)
+        assert count == 5
+
+    def test_invalidate_nonexistent_entry(self):
+        """Test invalidating non-existent entry returns 0."""
+        store = InMemoryStore()
+        hostname = "192.168.1.1"
+        xpath = "/config/nonexistent"
+
+        count = invalidate_cache(hostname, xpath, store)
+        assert count == 0
+
+    def test_invalidate_different_hosts_isolation(self):
+        """Test that invalidation is isolated by hostname."""
+        store = InMemoryStore()
+        hostname1 = "192.168.1.1"
+        hostname2 = "192.168.1.2"
+        xpath = "/config/test"
+        xml_data = "<test/>"
+
+        cache_config(hostname1, xpath, xml_data, store)
+        cache_config(hostname2, xpath, xml_data, store)
+
+        # Invalidate hostname1
+        invalidate_cache(hostname1, None, store)
+
+        # hostname2 should still be cached
+        assert get_cached_config(hostname1, xpath, store) is None
+        assert get_cached_config(hostname2, xpath, store) == xml_data
+
+
+class TestCacheIntegration:
+    """Integration tests for cache with CRUD operations."""
+
+    def test_cache_disabled_returns_none(self, monkeypatch):
+        """Test that cache functions respect cache_enabled setting."""
+        from src.core.config import get_settings
+
+        # Mock cache_enabled to False
+        settings = get_settings()
+        monkeypatch.setattr(settings, "cache_enabled", False)
+
+        store = InMemoryStore()
+        hostname = "192.168.1.1"
+        xpath = "/config/test"
+        xml_data = "<test/>"
+
+        # Cache should not store
+        cache_config(hostname, xpath, xml_data, store)
+        cached = get_cached_config(hostname, xpath, store)
+        assert cached is None
+
+    def test_cache_uses_settings_ttl(self, monkeypatch):
+        """Test that cache uses TTL from settings."""
+        from src.core.config import get_settings
+
+        store = InMemoryStore()
+        hostname = "192.168.1.1"
+        xpath = "/config/test"
+        xml_data = "<test/>"
+
+        # Cache with default TTL
+        cache_config(hostname, xpath, xml_data, store)
+
+        # Verify it's cached
+        cached = get_cached_config(hostname, xpath, store)
+        assert cached == xml_data
+
+    def test_cache_xpath_hashing(self):
+        """Test that XPath hashing works correctly."""
+        from src.core.memory_store import _hash_xpath
+
+        xpath1 = "/config/test"
+        xpath2 = "/config/test"
+        xpath3 = "/config/different"
+
+        hash1 = _hash_xpath(xpath1)
+        hash2 = _hash_xpath(xpath2)
+        hash3 = _hash_xpath(xpath3)
+
+        # Same xpath should produce same hash
+        assert hash1 == hash2
+        # Different xpath should produce different hash
+        assert hash1 != hash3

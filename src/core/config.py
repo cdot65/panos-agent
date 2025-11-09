@@ -86,6 +86,20 @@ class Settings(BaseSettings):
     default_mode: Literal["autonomous", "deterministic"] = "autonomous"
     log_level: str = "INFO"
 
+    # Cache Configuration
+    cache_enabled: bool = Field(
+        default=True,
+        description="Enable configuration caching to reduce API calls",
+    )
+    cache_ttl_seconds: int = Field(
+        default=60,
+        description="Time-to-live for cached configuration entries in seconds",
+    )
+    cache_max_entries: int = Field(
+        default=1000,
+        description="Maximum number of cache entries per hostname (optional limit)",
+    )
+
 
 # Timeout constants for graph invocations
 # These prevent runaway executions and ensure responsive behavior

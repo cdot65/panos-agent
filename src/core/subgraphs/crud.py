@@ -12,6 +12,8 @@ from langgraph.graph import END, START, StateGraph
 from lxml import etree
 
 from src.core.client import get_panos_client
+from src.core.config import get_settings
+from src.core.memory_store import cache_config, get_cached_config, invalidate_cache
 from src.core.panos_api import (
     PanOSAPIError,
     PanOSConnectionError,
@@ -24,6 +26,7 @@ from src.core.panos_api import (
 from src.core.panos_models import parse_xml_to_dict
 from src.core.retry_policies import PANOS_RETRY_POLICY
 from src.core.state_schemas import CRUDState
+from src.core.store_context import get_store
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +107,7 @@ async def validate_input(state: CRUDState) -> CRUDState:
 
 
 async def check_existence(state: CRUDState) -> CRUDState:
-    """Check if object exists on firewall.
+    """Check if object exists on firewall (with caching).
 
     Args:
         state: Current CRUD state
@@ -127,10 +130,39 @@ async def check_existence(state: CRUDState) -> CRUDState:
             state["object_type"], name=state["object_name"], device_context=device_context
         )
 
-        # Try to get the config
+        # Check cache first
+        store = get_store()
+        settings = get_settings()
+        if store and settings.cache_enabled:
+            cached_xml = get_cached_config(settings.panos_hostname, xpath, store)
+            if cached_xml:
+                logger.debug(f"Cache HIT for existence check: {state['object_name']}")
+                # Parse cached XML to check existence
+                try:
+                    root = etree.fromstring(cached_xml)
+                    exists = root is not None and len(root) > 0
+                    return {**state, "exists": exists}
+                except Exception:
+                    # If parsing fails, fall through to API call
+                    pass
+
+        # Cache MISS: Fetch from firewall
+        logger.debug(f"Cache MISS for existence check: {state['object_name']}")
         try:
             result = await get_config(xpath, client)
             exists = result is not None and len(result) > 0
+
+            # Cache the result
+            if store and settings.cache_enabled and result is not None:
+                xml_str = etree.tostring(result, encoding="unicode")
+                cache_config(
+                    settings.panos_hostname,
+                    xpath,
+                    xml_str,
+                    store,
+                    ttl=settings.cache_ttl_seconds,
+                )
+
             logger.debug(f"Object exists: {exists}")
             return {**state, "exists": exists}
         except PanOSAPIError as e:
@@ -377,6 +409,19 @@ async def create_object(state: CRUDState) -> CRUDState:
 
         logger.info(f"Successfully created {state['object_type']}: {object_name}")
 
+        # Invalidate cache after successful create
+        store = get_store()
+        settings = get_settings()
+        if store and settings.cache_enabled:
+            # Build xpath for the created object to invalidate its cache
+            object_xpath = build_xpath(
+                state["object_type"], name=object_name, device_context=device_context
+            )
+            invalidate_cache(settings.panos_hostname, object_xpath, store)
+            # Also invalidate parent xpath (list operations)
+            invalidate_cache(settings.panos_hostname, xpath, store)
+            logger.debug(f"Cache invalidated after create: {object_name}")
+
         return {
             **state,
             "operation_result": {
@@ -410,7 +455,7 @@ async def create_object(state: CRUDState) -> CRUDState:
 
 
 async def read_object(state: CRUDState) -> CRUDState:
-    """Read existing PAN-OS object.
+    """Read existing PAN-OS object (with caching).
 
     Args:
         state: Current CRUD state
@@ -434,8 +479,43 @@ async def read_object(state: CRUDState) -> CRUDState:
             state["object_type"], name=state["object_name"], device_context=device_context
         )
 
-        # Get config
+        # Check cache first
+        store = get_store()
+        settings = get_settings()
+        if store and settings.cache_enabled:
+            cached_xml = get_cached_config(settings.panos_hostname, xpath, store)
+            if cached_xml:
+                logger.debug(f"Cache HIT for read: {state['object_name']}")
+                # Parse and return cached data
+                try:
+                    root = etree.fromstring(cached_xml)
+                    obj_data = parse_xml_to_dict(root)
+                    return {
+                        **state,
+                        "operation_result": {
+                            "status": "success",
+                            "name": state["object_name"],
+                            "data": obj_data,
+                        },
+                    }
+                except Exception:
+                    # If parsing fails, fall through to API call
+                    pass
+
+        # Cache MISS: Fetch from firewall
+        logger.debug(f"Cache MISS for read: {state['object_name']}")
         result = await get_config(xpath, client)
+
+        # Cache the result
+        if store and settings.cache_enabled and result is not None:
+            xml_str = etree.tostring(result, encoding="unicode")
+            cache_config(
+                settings.panos_hostname,
+                xpath,
+                xml_str,
+                store,
+                ttl=settings.cache_ttl_seconds,
+            )
 
         # Parse XML to dict
         obj_data = parse_xml_to_dict(result)
@@ -509,6 +589,16 @@ async def update_object(state: CRUDState) -> CRUDState:
         await edit_config(xpath, element, client)
 
         logger.info(f"Successfully updated {state['object_type']}: {state['object_name']}")
+
+        # Invalidate cache after successful update
+        store = get_store()
+        settings = get_settings()
+        if store and settings.cache_enabled:
+            invalidate_cache(settings.panos_hostname, xpath, store)
+            # Also invalidate parent xpath (list operations)
+            parent_xpath = build_xpath(state["object_type"], device_context=device_context)
+            invalidate_cache(settings.panos_hostname, parent_xpath, store)
+            logger.debug(f"Cache invalidated after update: {state['object_name']}")
 
         return {
             **state,
@@ -586,6 +676,16 @@ async def delete_object(state: CRUDState) -> CRUDState:
         await delete_config(xpath, client)
 
         logger.info(f"Successfully deleted {state['object_type']}: {state['object_name']}")
+
+        # Invalidate cache after successful delete
+        store = get_store()
+        settings = get_settings()
+        if store and settings.cache_enabled:
+            invalidate_cache(settings.panos_hostname, xpath, store)
+            # Also invalidate parent xpath (list operations)
+            parent_xpath = build_xpath(state["object_type"], device_context=device_context)
+            invalidate_cache(settings.panos_hostname, parent_xpath, store)
+            logger.debug(f"Cache invalidated after delete: {state['object_name']}")
 
         return {
             **state,

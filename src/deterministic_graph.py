@@ -16,6 +16,7 @@ from src.core.checkpoint_manager import get_checkpointer
 from src.core.client import get_device_context
 from src.core.memory_store import store_workflow_execution
 from src.core.state_schemas import DeterministicState
+from src.core.store_context import set_store
 from src.core.subgraphs.deterministic import create_deterministic_workflow_subgraph
 
 logger = logging.getLogger(__name__)
@@ -288,6 +289,9 @@ def create_deterministic_graph(store: BaseStore | None = None, checkpointer=None
 
     if store is None:
         store = InMemoryStore()
+
+    # Set store in context for subgraphs and tools to access
+    set_store(store)
 
     if checkpointer is None:
         checkpointer = get_checkpointer()

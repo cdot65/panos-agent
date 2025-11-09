@@ -26,6 +26,7 @@ from src.core.memory_store import (
 )
 from src.core.retry_policies import PANOS_RETRY_POLICY
 from src.core.state_schemas import AutonomousState
+from src.core.store_context import set_store
 from src.tools import ALL_TOOLS
 
 logger = logging.getLogger(__name__)
@@ -345,6 +346,9 @@ def create_autonomous_graph(store: BaseStore | None = None, checkpointer=None) -
 
     if store is None:
         store = InMemoryStore()
+
+    # Set store in context for subgraphs and tools to access
+    set_store(store)
 
     if checkpointer is None:
         checkpointer = get_checkpointer()

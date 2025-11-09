@@ -717,6 +717,79 @@ TIMEOUT_COMMIT = 180.0          # Change to desired seconds
 - Simple queries that should complete quickly
 - CI/CD pipelines with strict time limits
 
+## Workflow Limits
+
+### Recursion Limits
+
+To prevent infinite loops and ensure system stability, LangGraph enforces recursion limits on graph execution. The agent monitors these limits and stops workflows gracefully before hitting the hard limit.
+
+**Default Limits:**
+
+- **Autonomous mode**: 25 steps (default)
+  - ReAct pattern should complete quickly with focused tool calls
+  - Most queries complete in 5-10 iterations
+
+- **Deterministic mode**: 50 steps (default)
+  - Workflows may have many sequential steps
+  - Allows for complex multi-step automation workflows
+
+**Why these limits?**
+
+- Prevents runaway executions that could consume excessive resources
+- Ensures workflows complete or fail within reasonable timeframes
+- Provides predictable behavior for production deployments
+
+### Customizing Limits
+
+You can override the default recursion limit using the `--recursion-limit` CLI flag:
+
+```bash
+# Increase limit for long workflows
+panos-agent run -p "long_workflow" -m deterministic --recursion-limit 100
+
+# Decrease limit for faster failure detection
+panos-agent run -p "quick_test" -m autonomous --recursion-limit 10
+```
+
+**When to increase limits:**
+
+- Complex workflows with 20+ steps
+- Workflows with many conditional branches
+- Batch operations processing many items sequentially
+
+**When to decrease limits:**
+
+- Testing and development (faster failure detection)
+- Simple queries that should complete quickly
+- Resource-constrained environments
+
+### Graceful Degradation
+
+If a workflow approaches 80% of the recursion limit, the agent stops gracefully with partial results:
+
+1. **Warning logged** - System logs a warning when approaching the limit
+2. **Workflow stops gracefully** - No crash or error, workflow ends cleanly
+3. **Partial results returned** - All completed steps are included in the result
+4. **Clear message** - User-friendly explanation of why the workflow stopped
+
+**Example output:**
+
+```
+Workflow progress: 40/50 steps
+⚠️ Approaching recursion limit (40/50) - stopping workflow gracefully
+⚠️ Workflow partially completed: reached 40/50 steps. Workflow stopped gracefully to prevent recursion limit error.
+```
+
+**Progress Logging:**
+
+The agent logs progress at key milestones:
+
+- **Every 5 steps**: `Workflow progress: 5/50 steps`
+- **At 50%**: `Workflow at 50% of recursion limit (25/50)`
+- **At 80%**: `Workflow at 80% of recursion limit (40/50) - approaching maximum`
+
+This provides visibility into workflow execution progress and helps identify when workflows are approaching limits.
+
 ## Error Handling & Resilience
 
 ### Automatic Retry Policies

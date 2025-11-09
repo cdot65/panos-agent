@@ -95,6 +95,7 @@ async def run_autonomous_async(
     model_name: str,
     temperature: float,
     no_stream: bool,
+    recursion_limit: Optional[int] = None,
 ):
     """Async helper for autonomous mode execution."""
     from src.autonomous_graph import create_autonomous_graph
@@ -115,6 +116,7 @@ async def run_autonomous_async(
                 "thread_id": thread_id,
             },
             "timeout": TIMEOUT_AUTONOMOUS,
+            "recursion_limit": recursion_limit or 25,  # Default 25 for autonomous mode
             "tags": ["panos-agent", "autonomous", "v0.1.0"],
             "metadata": {
                 "mode": "autonomous",
@@ -190,6 +192,7 @@ async def run_deterministic_async(
     prompt: str,
     thread_id: str,
     no_stream: bool,
+    recursion_limit: Optional[int] = None,
 ):
     """Async helper for deterministic mode execution."""
     from src.core.checkpoint_manager import get_async_checkpointer
@@ -213,6 +216,7 @@ async def run_deterministic_async(
         config = {
             "configurable": {"thread_id": thread_id},
             "timeout": TIMEOUT_DETERMINISTIC,
+            "recursion_limit": recursion_limit or 50,  # Default 50 for deterministic mode
             "tags": ["panos-agent", "deterministic", prompt, "v0.1.0"],
             "metadata": {
                 "mode": "deterministic",
@@ -321,6 +325,11 @@ def run(
         min=0.0,
         max=1.0,
     ),
+    recursion_limit: Optional[int] = typer.Option(
+        None,
+        "--recursion-limit",
+        help="Maximum workflow steps (default: 25 autonomous, 50 deterministic)",
+    ),
 ):
     """Run PAN-OS agent with specified mode and prompt.
 
@@ -345,6 +354,9 @@ def run(
 
         # Disable streaming for automation
         panos-agent run -p "List objects" --no-stream
+
+        # Custom recursion limit for long workflows
+        panos-agent run -p "long_workflow" -m deterministic --recursion-limit 100
     """
     setup_logging(log_level)
 
@@ -368,6 +380,7 @@ def run(
                     model_name=model_name,
                     temperature=temperature,
                     no_stream=no_stream,
+                    recursion_limit=recursion_limit,
                 )
             )
         elif mode == "deterministic":
@@ -376,6 +389,7 @@ def run(
                     prompt=prompt,
                     thread_id=tid,
                     no_stream=no_stream,
+                    recursion_limit=recursion_limit,
                 )
             )
         else:

@@ -7,10 +7,11 @@ Supports HITL approval gates for critical operations.
 
 import logging
 import sys
-from typing import Literal
+from typing import Literal, Optional
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
@@ -61,15 +62,68 @@ def load_workflow(state: DeterministicWorkflowState) -> DeterministicWorkflowSta
     }
 
 
-async def execute_step(state: DeterministicWorkflowState) -> DeterministicWorkflowState:
-    """Execute current workflow step.
+async def execute_step(
+    state: DeterministicWorkflowState, config: Optional[RunnableConfig] = None
+) -> DeterministicWorkflowState:
+    """Execute current workflow step with recursion tracking.
 
     Args:
         state: Current workflow state
+        config: Optional RunnableConfig with recursion limit and step tracking
 
     Returns:
         Updated state with step execution result
     """
+    # Get recursion metadata from config
+    config_dict = config or {}
+    metadata = config_dict.get("metadata", {})
+
+    # Try to get LangGraph step count, fall back to state tracking
+    # Each workflow step involves multiple graph steps (execute -> evaluate -> route -> increment)
+    # So we estimate: current_step * 4 (approximate graph depth per workflow step)
+    langgraph_step = metadata.get("langgraph_step", 0)
+    if langgraph_step == 0:
+        # Fallback: estimate from workflow step index
+        # Each workflow step typically involves ~4 graph steps
+        langgraph_step = state["current_step"] * 4
+
+    recursion_limit = config_dict.get("recursion_limit", 25)
+    threshold = int(recursion_limit * 0.8)  # 80% threshold
+
+    # Check if approaching limit
+    if langgraph_step >= threshold:
+        logger.warning(
+            f"Approaching recursion limit ({langgraph_step}/{recursion_limit}) - "
+            f"stopping workflow gracefully"
+        )
+        return {
+            **state,
+            "overall_result": {
+                "decision": "partial",
+                "reason": f"Approaching recursion limit ({langgraph_step}/{recursion_limit})",
+                "success": False,
+            },
+            "message": (
+                f"⚠️ Workflow partially completed: reached {langgraph_step}/{recursion_limit} steps. "
+                f"Workflow stopped gracefully to prevent recursion limit error."
+            ),
+        }
+
+    # Progress logging every 5 steps
+    if langgraph_step > 0 and langgraph_step % 5 == 0:
+        logger.info(f"Workflow progress: {langgraph_step}/{recursion_limit} steps")
+
+    # Milestone logging at 50%
+    if langgraph_step == int(recursion_limit * 0.5):
+        logger.info(f"Workflow at 50% of recursion limit ({langgraph_step}/{recursion_limit})")
+
+    # Milestone logging at 80% threshold
+    if langgraph_step == threshold - 1:
+        logger.warning(
+            f"Workflow at 80% of recursion limit ({langgraph_step}/{recursion_limit}) - "
+            f"approaching maximum"
+        )
+
     current_step_idx = state["current_step"]
     steps = state["steps"]
 
@@ -276,6 +330,11 @@ async def evaluate_step(state: DeterministicWorkflowState) -> DeterministicWorkf
     Returns:
         Updated state with evaluation decision
     """
+    # If overall_result already set (e.g., recursion limit), skip evaluation
+    if state.get("overall_result") and state["overall_result"].get("decision") == "partial":
+        logger.debug("Skipping evaluation - workflow stopped due to recursion limit")
+        return state
+
     settings = get_settings()
     llm = ChatAnthropic(
         model="claude-haiku-4-5",
@@ -380,6 +439,10 @@ def route_after_evaluation(
 
     decision = state["overall_result"].get("decision", "stop")
 
+    # Handle partial completion (recursion limit reached)
+    if decision == "partial":
+        return "format_result"
+
     if decision == "continue":
         # Check if there are more steps
         if state["current_step"] + 1 < len(state["steps"]):
@@ -429,13 +492,24 @@ def format_result(state: DeterministicWorkflowState) -> DeterministicWorkflowSta
     )
     failed_steps = sum(1 for output in state["step_outputs"] if output.get("status") == "error")
 
+    # Check if partial completion due to recursion limit
+    is_partial = state.get("overall_result", {}).get("decision") == "partial"
+
     # Build result message
-    message_parts = [
-        f"📊 Workflow '{state['workflow_name']}' Execution Summary",
-        "",
-        f"Steps: {completed_steps}/{total_steps}",
-        f"✅ Successful: {successful_steps}",
-    ]
+    if is_partial:
+        message_parts = [
+            f"⚠️ Workflow '{state['workflow_name']}' - Partial Completion",
+            "",
+            f"Steps: {completed_steps}/{total_steps} (stopped early due to recursion limit)",
+            f"✅ Successful: {successful_steps}",
+        ]
+    else:
+        message_parts = [
+            f"📊 Workflow '{state['workflow_name']}' Execution Summary",
+            "",
+            f"Steps: {completed_steps}/{total_steps}",
+            f"✅ Successful: {successful_steps}",
+        ]
 
     if approved_steps > 0:
         message_parts.append(f"✅ Approved: {approved_steps}")

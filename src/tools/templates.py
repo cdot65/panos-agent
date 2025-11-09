@@ -1,7 +1,7 @@
-"""Address object tools for PAN-OS.
+"""Template tools for Panorama.
 
-Tools for creating, reading, updating, deleting, and listing address objects.
-Thin wrappers around CRUD subgraph for backward compatibility.
+Tools for creating, reading, updating, deleting, and listing templates.
+Templates define network and device settings for managed firewalls.
 """
 
 import uuid
@@ -14,52 +14,47 @@ from src.core.subgraphs.crud import create_crud_subgraph
 
 
 @tool
-async def address_create(
+async def template_create(
     name: str,
-    value: str,
-    address_type: str = "ip-netmask",
     description: Optional[str] = None,
-    tag: Optional[list[str]] = None,
     mode: str = "skip_if_exists",
 ) -> str:
-    """Create a new address object on PAN-OS firewall (idempotent).
+    """Create a new template on Panorama (idempotent).
+
+    Templates define network and device settings (zones, interfaces, VLANs, etc.)
+    that can be applied to managed firewalls.
 
     Args:
-        name: Name of the address object
-        value: IP address, network, or FQDN (e.g., "10.1.1.1", "10.1.1.0/24", "example.com")
-        address_type: Type of address (ip-netmask, ip-range, fqdn) - default: ip-netmask
+        name: Name of the template
         description: Optional description
-        tag: Optional list of tags to apply
         mode: Error handling mode - "skip_if_exists" (skip if exists, default) or "strict" (fail if exists)
 
     Returns:
         Success/failure message
 
     Example:
-        address_create(name="web-server", value="10.1.1.100", description="Web server")
-        address_create(name="web-server", value="10.1.1.100", mode="skip_if_exists")
+        template_create(name="dmz-template", description="DMZ network configuration")
+        template_create(name="branch-template", description="Branch office template")
     """
     crud_graph = create_crud_subgraph()
 
     data = {
         "name": name,
-        "value": value,
-        "type": address_type,
     }
 
     if description:
         data["description"] = description
-    if tag:
-        data["tag"] = tag
 
     try:
-        # Get device context for XPath generation
+        # Get device context - must be PANORAMA
         device_context = await get_device_context()
+        if device_context.get("device_type") != "PANORAMA":
+            return "❌ Error: template operations require a Panorama device"
 
         result = await crud_graph.ainvoke(
             {
                 "operation_type": "create",
-                "object_type": "address",
+                "object_type": "template",
                 "data": data,
                 "object_name": name,
                 "mode": mode,
@@ -73,28 +68,30 @@ async def address_create(
 
 
 @tool
-async def address_read(name: str) -> str:
-    """Read an existing address object from PAN-OS firewall.
+async def template_read(name: str) -> str:
+    """Read an existing template from Panorama.
 
     Args:
-        name: Name of the address object to retrieve
+        name: Name of the template to retrieve
 
     Returns:
-        Address object details or error message
+        Template details or error message
 
     Example:
-        address_read(name="web-server")
+        template_read(name="dmz-template")
     """
     crud_graph = create_crud_subgraph()
 
     try:
-        # Get device context for XPath generation
+        # Get device context - must be PANORAMA
         device_context = await get_device_context()
+        if device_context.get("device_type") != "PANORAMA":
+            return "❌ Error: template operations require a Panorama device"
 
         result = await crud_graph.ainvoke(
             {
                 "operation_type": "read",
-                "object_type": "address",
+                "object_type": "template",
                 "object_name": name,
                 "data": None,
                 "device_context": device_context,
@@ -107,46 +104,44 @@ async def address_read(name: str) -> str:
 
 
 @tool
-async def address_update(
+async def template_update(
     name: str,
-    value: Optional[str] = None,
     description: Optional[str] = None,
-    tag: Optional[list[str]] = None,
 ) -> str:
-    """Update an existing address object on PAN-OS firewall.
+    """Update an existing template on Panorama.
 
     Args:
-        name: Name of the address object to update
-        value: New IP address, network, or FQDN (optional)
+        name: Name of the template to update
         description: New description (optional)
-        tag: New list of tags (optional)
 
     Returns:
         Success/failure message
 
     Example:
-        address_update(name="web-server", value="10.1.1.101", description="Updated web server")
+        template_update(name="dmz-template", description="Updated DMZ configuration")
     """
     crud_graph = create_crud_subgraph()
 
     data = {}
-    if value:
-        data["value"] = value
     if description:
         data["description"] = description
-    if tag is not None:
-        data["tag"] = tag
 
     if not data:
         return "❌ Error: No fields provided for update"
 
     try:
+        # Get device context - must be PANORAMA
+        device_context = await get_device_context()
+        if device_context.get("device_type") != "PANORAMA":
+            return "❌ Error: template operations require a Panorama device"
+
         result = await crud_graph.ainvoke(
             {
                 "operation_type": "update",
-                "object_type": "address",
+                "object_type": "template",
                 "object_name": name,
                 "data": data,
+                "device_context": device_context,
             },
             config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
@@ -156,30 +151,38 @@ async def address_update(
 
 
 @tool
-async def address_delete(name: str, mode: str = "strict") -> str:
-    """Delete an address object from PAN-OS firewall.
+async def template_delete(name: str, mode: str = "strict") -> str:
+    """Delete a template from Panorama.
+
+    CAUTION: Deleting a template removes all network/device settings within it.
+    Devices using this template will lose their configuration.
 
     Args:
-        name: Name of the address object to delete
+        name: Name of the template to delete
         mode: Error handling mode - "strict" (fail if missing) or "skip_if_missing" (skip if missing)
 
     Returns:
         Success/failure message
 
     Example:
-        address_delete(name="web-server")
-        address_delete(name="web-server", mode="skip_if_missing")
+        template_delete(name="old-template")
     """
     crud_graph = create_crud_subgraph()
 
     try:
+        # Get device context - must be PANORAMA
+        device_context = await get_device_context()
+        if device_context.get("device_type") != "PANORAMA":
+            return "❌ Error: template operations require a Panorama device"
+
         result = await crud_graph.ainvoke(
             {
                 "operation_type": "delete",
-                "object_type": "address",
+                "object_type": "template",
                 "object_name": name,
                 "data": None,
                 "mode": mode,
+                "device_context": device_context,
             },
             config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
@@ -189,24 +192,30 @@ async def address_delete(name: str, mode: str = "strict") -> str:
 
 
 @tool
-async def address_list() -> str:
-    """List all address objects on PAN-OS firewall.
+async def template_list() -> str:
+    """List all templates on Panorama.
 
     Returns:
-        List of address objects or error message
+        List of templates or error message
 
     Example:
-        address_list()
+        template_list()
     """
     crud_graph = create_crud_subgraph()
 
     try:
+        # Get device context - must be PANORAMA
+        device_context = await get_device_context()
+        if device_context.get("device_type") != "PANORAMA":
+            return "❌ Error: template operations require a Panorama device"
+
         result = await crud_graph.ainvoke(
             {
                 "operation_type": "list",
-                "object_type": "address",
+                "object_type": "template",
                 "object_name": None,
                 "data": None,
+                "device_context": device_context,
             },
             config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
@@ -216,10 +225,10 @@ async def address_list() -> str:
 
 
 # Export all tools
-ADDRESS_TOOLS = [
-    address_create,
-    address_read,
-    address_update,
-    address_delete,
-    address_list,
+TEMPLATE_TOOLS = [
+    template_create,
+    template_read,
+    template_update,
+    template_delete,
+    template_list,
 ]

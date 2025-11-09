@@ -18,7 +18,7 @@ This project demonstrates two approaches to AI-driven network automation:
 ### Key Features
 
 - 🤖 **Dual-mode operation**: Autonomous (ReAct) and Deterministic (workflow-based)
-- 🔧 **Comprehensive PAN-OS support**: 33 tools across addresses, services, policies, NAT
+- 🔧 **Comprehensive PAN-OS support**: 54 tools across objects, policies, Panorama, and monitoring
 - ⚡ **Fully async architecture**: Built on `httpx` and `lxml` for high-performance I/O
 - 🎯 **LangGraph Studio integration**: Visual debugging and execution
 - 📡 **Real-time streaming**: Live progress updates with emoji indicators (default)
@@ -27,6 +27,34 @@ This project demonstrates two approaches to AI-driven network automation:
 - 📝 **Firewall commits**: Job polling with approval gates
 - 💾 **Persistent checkpointing**: AsyncSqliteSaver for conversation history and failure recovery
 - ✅ **XPath validation**: Structured XML generation with validation rules
+
+### Available Tools (54 Total)
+
+**Firewall Object Management (20 tools):**
+- Address Objects: create, read, update, delete, list (5 tools)
+- Address Groups: create, read, update, delete, list (5 tools)
+- Service Objects: create, read, update, delete, list (5 tools)
+- Service Groups: create, read, update, delete, list (5 tools)
+
+**Policy Management (9 tools):**
+- Security Policies: create, read, update, delete, list (5 tools)
+- NAT Policies: create, read, update, delete (4 tools)
+
+**Panorama Management (19 tools):**
+- Device Groups: create, read, update, delete, list (5 tools)
+- Templates: create, read, update, delete, list (5 tools)
+- Template Stacks: create, read, update, delete, list (5 tools)
+- Panorama Operations: commit, commit-all, push-to-devices, validate-commit (4 tools)
+
+**Operational Commands (4 tools):**
+- `show_interfaces` - Display network interfaces and status
+- `show_routing_table` - Show routing table with all routes
+- `show_sessions` - Display active sessions with filters
+- `show_system_resources` - Monitor CPU, memory, disk usage
+
+**Orchestration (2 tools):**
+- `crud_operation` - Unified CRUD interface for all object types
+- `commit_changes` - Commit workflow with approval gates
 
 ## Quickstart
 
@@ -81,12 +109,20 @@ LOG_LEVEL=INFO
 # Start LangGraph Studio
 langgraph dev
 
-# Or via CLI command (once implemented)
-panos-agent studio
+# Studio UI:  http://localhost:8000
+# API Server: http://localhost:2024
 
 ```
 
-Then open `<http://localhost:8000`> and select a graph (autonomous or deterministic).
+**Features:**
+- 💬 Interactive chat interface
+- 🔍 Visual tool call inspection
+- ⏰ Time-travel debugging (rewind/fork conversations)
+- 📊 Graph execution visualization
+- 🎯 Multi-graph support (autonomous + deterministic)
+
+**Quick Start:** [QUICKSTART_STUDIO.md](QUICKSTART_STUDIO.md)
+**Full Guide:** [LANGGRAPH_STUDIO.md](LANGGRAPH_STUDIO.md)
 
 ### 5. CLI Usage
 
@@ -452,6 +488,134 @@ panos-agent checkpoints prune --days 30 --force
 - **Recovery**: Resume from any checkpoint after failures
 - **Time-Travel**: View and fork from historical states
 - **Auditing**: Complete history of all operations
+
+---
+
+## Panorama Support
+
+The agent automatically detects whether you're connecting to a Panorama management server or a standalone firewall, and adapts its behavior accordingly.
+
+### Automatic Device Detection
+
+When you connect, the agent automatically identifies the device type:
+
+```bash
+# Connect to Panorama - agent auto-detects and enables Panorama features
+export PANOS_HOSTNAME=panorama.example.com
+panos-agent test-connection
+# ✅ Connected to Panorama 11.0.0 (serial: 123456789)
+
+# Connect to firewall - agent auto-detects and uses firewall mode
+export PANOS_HOSTNAME=firewall.example.com
+panos-agent test-connection
+# ✅ Connected to PAN-OS 11.1.4 (model: PA-220, serial: 987654321)
+```
+
+### Panorama Capabilities
+
+**Device Group Management:**
+- Create hierarchical device groups for organizing firewalls
+- Assign firewalls to device groups
+- Define policies and objects at device-group level
+- Inherit settings from parent device groups
+
+**Template Management:**
+- Create templates for network configuration (interfaces, zones, routing)
+- Create template stacks for layered configuration
+- Apply templates to device groups or individual firewalls
+- Manage device settings across multiple firewalls
+
+**Shared Objects:**
+- Create shared address and service objects available to all device groups
+- Reference shared objects in device-group policies
+- Centralize common infrastructure definitions
+
+**Configuration Contexts:**
+
+The agent automatically selects the appropriate configuration context based on your operations:
+
+1. **Shared** - Objects available to all device groups
+2. **Device-Group** - Policies and objects specific to a device group
+3. **Template** - Network configuration for device settings
+4. **Template-Stack** - Layered templates for complex configurations
+
+### Example Commands
+
+```bash
+# Create a device group
+panos-agent run -p "Create device group 'Branch-Offices' with description 'All branch office firewalls'"
+
+# Create shared address object (available to all device groups)
+panos-agent run -p "Create shared address object 'DNS-Server' with IP 8.8.8.8"
+
+# Create device-group-specific security policy
+panos-agent run -p "Create security rule in device group 'Branch-Offices' allowing web traffic"
+
+# Create a template for network configuration
+panos-agent run -p "Create template 'Branch-Network' for branch office network settings"
+
+# Create a template stack
+panos-agent run -p "Create template stack 'Branch-Stack' with templates 'Branch-Network' and 'Base-Config'"
+
+# Commit to Panorama (local commit only)
+panos-agent run -p "Commit changes to Panorama with description 'Added branch office configuration'"
+
+# Push configuration to managed devices (requires approval)
+panos-agent run -p "Push device group 'Branch-Offices' configuration to all managed devices"
+```
+
+### Context Selection
+
+When working with Panorama, the agent intelligently selects the configuration context:
+
+- **Shared objects**: Automatically use shared context when you mention "shared"
+- **Device-group operations**: Specify device group name in your prompt
+- **Template operations**: Mention "template" to work with network configuration
+- **Template stacks**: Use "template stack" in your prompt
+
+**Example context-aware prompts:**
+
+```bash
+# Shared context
+panos-agent run -p "Create shared address object 'Public-DNS' at 8.8.8.8"
+
+# Device-group context  
+panos-agent run -p "List address objects in device group 'Production'"
+
+# Template context
+panos-agent run -p "Create interface config in template 'Branch-Template'"
+```
+
+### Approval Gates
+
+Critical Panorama operations require approval before execution:
+
+- **Commit-all operations**: Push configuration to device groups
+- **Push to devices**: Deploy changes to managed firewalls
+
+The agent will prompt for approval with detailed information about the operation:
+
+```
+⚠️  CRITICAL OPERATION: Panorama Commit-All
+Target: device groups: Branch-Offices
+Description: Deploy new security rules
+
+This will push configuration to all firewalls in the specified device groups.
+Type 'approve' to continue or anything else to cancel:
+```
+
+### Panorama vs Firewall
+
+| Feature | Firewall | Panorama |
+|---------|----------|----------|
+| Device Groups | ❌ Not available | ✅ Full management |
+| Templates | ❌ Not available | ✅ Full management |
+| Shared Objects | ❌ Not available | ✅ Available to all groups |
+| Virtual Systems (vsys) | ✅ Supported (--vsys flag) | ❌ Not applicable |
+| Local Policies | ✅ Direct configuration | ⚠️ Use device groups instead |
+| Commit Operation | ✅ Single firewall commit | ✅ Panorama + Push to devices |
+
+For detailed Panorama workflows and best practices, see **[docs/PANORAMA.md](docs/PANORAMA.md)**.
 
 ---
 
@@ -1368,7 +1532,7 @@ graph TD
 - [x] **Expanded policy tools**: Security policy full CRUD (5 tools)
 - [x] **NAT policy tools**: Basic NAT CRUD (4 tools)
 - [x] **Orchestration tools**: crud_operation, commit_changes
-- [x] **Total: 33 tools** across all categories
+- [x] **Total: 54 tools** across objects, policies, Panorama, and monitoring (Phase 3 complete)
 
 ### ✅ Phase 5: Testing & Polish (Completed)
 
@@ -1481,7 +1645,7 @@ See `examples/api_usage.py` for complete examples using the LangGraph Python SDK
 
 All deployed agents automatically trace to LangSmith:
 
-- **View traces**: https://smith.langchain.com/projects/{your-project}
+- **View traces**: <https://smith.langchain.com/projects/{your-project}>
 - **Monitor performance**: Response times, token usage, error rates
 - **Debug issues**: Full execution graphs with step-by-step breakdown
 - **Anonymized data**: Sensitive firewall data is automatically redacted
@@ -1506,15 +1670,17 @@ See repository root for license information.
 
 ---
 
-**Status**: ✅ Complete (All 5 phases + Phase 1 observability)
-**Features**: 33 tools, commit workflow, 6 workflows, LangSmith observability, comprehensive docs
-**Coverage**: Architecture guide, setup guide, testing examples
+**Status**: ✅ Complete (Phases 1-5 + Phase 3 enhancements)
+**Features**: 54 tools, operational monitoring, commit workflow, 6 workflows, Panorama support, multi-vsys
+**Coverage**: Architecture guide, setup guide, testing examples, multi-vsys support
 **Recent Updates**:
 
+- ✅ Phase 3.5: Operational commands and log query tools (7 new tools)
+- ✅ Phase 3.4: Multi-vsys support with dynamic XPath generation
+- ✅ Phase 3.3: Panorama support (device groups, templates, template stacks)
 - ✅ LangSmith environment variables and anonymizers (Phase 1.1-1.2)
-- ✅ Metadata and tags for observability (Phase 1.3)
 - ✅ Migrated from pan-os-python to httpx + lxml (fully async)
 - ✅ Added XPath validation and structure mapping
 - ✅ AsyncSqliteSaver for async checkpointing
 
-**Last Updated**: 2025-01-09
+**Last Updated**: 2025-11-09

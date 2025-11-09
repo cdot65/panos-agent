@@ -34,7 +34,8 @@ class TestRuntimeContextIntegration:
 
         # Create graph with async checkpointer
         checkpointer = await get_async_checkpointer()
-        graph = create_autonomous_graph(checkpointer=checkpointer)
+        factory_config = {"configurable": {"checkpointer": checkpointer}}
+        graph = create_autonomous_graph(factory_config)
 
         # Execute graph with Haiku model context (use ainvoke for async)
         result = await graph.ainvoke(
@@ -79,7 +80,8 @@ class TestRuntimeContextIntegration:
 
         # Create graph with async checkpointer
         checkpointer = await get_async_checkpointer()
-        graph = create_autonomous_graph(checkpointer=checkpointer)
+        factory_config = {"configurable": {"checkpointer": checkpointer}}
+        graph = create_autonomous_graph(factory_config)
 
         # Execute graph with Opus model context (use ainvoke for async)
         result = await graph.ainvoke(
@@ -126,7 +128,8 @@ class TestRuntimeContextIntegration:
 
         # Create graph with async checkpointer
         checkpointer = await get_async_checkpointer()
-        graph = create_autonomous_graph(checkpointer=checkpointer)
+        factory_config = {"configurable": {"checkpointer": checkpointer}}
+        graph = create_autonomous_graph(factory_config)
 
         # Execute graph with higher temperature (use ainvoke for async)
         result = await graph.ainvoke(
@@ -180,7 +183,8 @@ class TestRuntimeContextIntegration:
         ):
             # Create graph with async checkpointer
             checkpointer = await get_async_checkpointer()
-            graph = create_autonomous_graph(checkpointer=checkpointer)
+            factory_config = {"configurable": {"checkpointer": checkpointer}}
+        graph = create_autonomous_graph(factory_config)
 
             # Execute graph - will make two agent calls (tool call + final) (use ainvoke for async)
             result = await graph.ainvoke(
@@ -229,7 +233,8 @@ class TestRuntimeContextDefaults:
 
         # Create graph with async checkpointer
         checkpointer = await get_async_checkpointer()
-        graph = create_autonomous_graph(checkpointer=checkpointer)
+        factory_config = {"configurable": {"checkpointer": checkpointer}}
+        graph = create_autonomous_graph(factory_config)
 
         # Execute graph without model/temperature in config
         # Should use AgentContext defaults (use ainvoke for async)
@@ -269,7 +274,8 @@ class TestRuntimeContextErrorHandling:
 
         # Create graph with async checkpointer
         checkpointer = await get_async_checkpointer()
-        graph = create_autonomous_graph(checkpointer=checkpointer)
+        factory_config = {"configurable": {"checkpointer": checkpointer}}
+        graph = create_autonomous_graph(factory_config)
 
         # Execute should raise exception (use ainvoke for async)
         with pytest.raises(Exception, match="LLM API error"):
@@ -310,7 +316,8 @@ class TestRuntimeContextModelComparison:
 
         # Create graph with async checkpointer
         checkpointer = await get_async_checkpointer()
-        graph = create_autonomous_graph(checkpointer=checkpointer)
+        factory_config = {"configurable": {"checkpointer": checkpointer}}
+        graph = create_autonomous_graph(factory_config)
 
         # Execute with Haiku (use ainvoke for async)
         await graph.ainvoke(

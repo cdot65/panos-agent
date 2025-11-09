@@ -201,6 +201,83 @@ async def execute_step(
                     ],
                 }
 
+            # Parse result to check for approval requirements
+            # If result indicates config changes detected, request approval
+            if "exists with different config" in result.lower():
+                logger.info(
+                    f"🔍 Config changes detected in step '{step_name}', requesting approval"
+                )
+
+                # Check if running in CLI mode
+                if is_cli_mode():
+                    # CLI mode: Use typer.confirm for terminal prompt
+                    import typer
+
+                    print(f"\n{result}")
+                    try:
+                        approved = typer.confirm(
+                            "\nObject exists with different configuration. Apply changes?",
+                            default=False,
+                        )
+                    except (EOFError, KeyboardInterrupt):
+                        approved = False
+                        logger.info("Approval interrupted by user")
+
+                    if not approved:
+                        logger.info(f"❌ User rejected config changes: {step_name}")
+                        return {
+                            **state,
+                            "step_outputs": state["step_outputs"]
+                            + [
+                                {
+                                    "step": step_name,
+                                    "status": "skipped",
+                                    "result": "❌ User rejected config changes",
+                                    "reason": "user_rejected_changes",
+                                }
+                            ],
+                        }
+
+                    logger.info(f"✅ User approved config changes: {step_name}")
+                    # TODO: In future phase, actually apply the changes here
+                    # For now, just mark as approved but skipped
+                    output = {
+                        "step": step_name,
+                        "status": "skipped",
+                        "result": "✅ User approved changes (apply not yet implemented)",
+                        "reason": "changes_approved_pending_implementation",
+                    }
+                else:
+                    # Studio/API mode: Use LangGraph interrupt for HITL
+                    approval = interrupt(
+                        {
+                            "type": "config_approval",
+                            "message": result,
+                            "step": step_name,
+                        }
+                    )
+
+                    if not approval:
+                        output = {
+                            "step": step_name,
+                            "status": "skipped",
+                            "result": "User rejected config changes",
+                            "reason": "user_rejected_changes",
+                        }
+                    else:
+                        # TODO: In future phase, actually apply the changes here
+                        output = {
+                            "step": step_name,
+                            "status": "skipped",
+                            "result": "User approved changes (apply not yet implemented)",
+                            "reason": "changes_approved_pending_implementation",
+                        }
+
+                return {
+                    **state,
+                    "step_outputs": state["step_outputs"] + [output],
+                }
+
             # Add to step outputs
             # Determine status from result message
             if "✅" in result:
@@ -550,10 +627,18 @@ def format_result(state: DeterministicWorkflowState) -> DeterministicWorkflowSta
                 error_msg += f" [{error_type}{retry_hint}]"
             message_parts.append(error_msg)
         elif status == "skipped":
-            reason = output.get("result", "")
-            if "already exists" in reason:
+            reason_code = output.get("reason", "")
+            result_text = output.get("result", "")
+
+            if reason_code == "unchanged" or "unchanged" in result_text.lower():
+                message_parts.append("     Reason: Configuration unchanged, no update needed")
+            elif reason_code == "user_rejected_changes" or "rejected" in result_text.lower():
+                message_parts.append("     Reason: User rejected configuration changes")
+            elif reason_code == "exists_with_changes":
+                message_parts.append("     Reason: Object exists with different configuration")
+            elif "already exists" in result_text:
                 message_parts.append("     Reason: Object already exists")
-            elif "not found" in reason:
+            elif "not found" in result_text:
                 message_parts.append("     Reason: Object not found")
 
     # Overall result

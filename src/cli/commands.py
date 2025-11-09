@@ -5,6 +5,7 @@ Typer-based CLI for running autonomous and deterministic modes.
 
 import asyncio
 import logging
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -109,7 +110,9 @@ async def run_autonomous_async(
     checkpointer = await get_async_checkpointer()
 
     try:
-        graph = create_autonomous_graph(checkpointer=checkpointer)
+        # Pass checkpointer via RunnableConfig for graph factory
+        factory_config = {"configurable": {"checkpointer": checkpointer}}
+        graph = create_autonomous_graph(factory_config)
 
         config = {
             "configurable": {
@@ -203,7 +206,9 @@ async def run_deterministic_async(
     checkpointer = await get_async_checkpointer()
 
     try:
-        graph = create_deterministic_graph(checkpointer=checkpointer)
+        # Pass checkpointer via RunnableConfig for graph factory
+        factory_config = {"configurable": {"checkpointer": checkpointer}}
+        graph = create_deterministic_graph(factory_config)
 
         # Format prompt as workflow invocation
         # Expected format: "workflow: <workflow_name>"
@@ -330,6 +335,11 @@ def run(
         "--recursion-limit",
         help="Maximum workflow steps (default: 25 autonomous, 50 deterministic)",
     ),
+    vsys: Optional[str] = typer.Option(
+        None,
+        "--vsys",
+        help="Virtual system for firewall operations (vsys1, vsys2, etc.). Default: vsys1",
+    ),
 ):
     """Run PAN-OS agent with specified mode and prompt.
 
@@ -357,8 +367,17 @@ def run(
 
         # Custom recursion limit for long workflows
         panos-agent run -p "long_workflow" -m deterministic --recursion-limit 100
+
+        # Multi-vsys firewall support
+        panos-agent run -p "List address objects" --vsys vsys2
+        panos-agent run -p "Create address in vsys3" --vsys vsys3
     """
     setup_logging(log_level)
+
+    # Set vsys environment variable if provided (for multi-vsys firewall support)
+    if vsys:
+        os.environ["PANOS_AGENT_VSYS"] = vsys
+        console.print(f"[dim]Using vsys: {vsys}[/dim]")
 
     # Resolve model name from alias
     model_name = resolve_model_name(model)

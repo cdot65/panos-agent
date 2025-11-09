@@ -5,12 +5,15 @@ using httpx for HTTP operations and lxml for XML parsing/generation.
 """
 
 import logging
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import httpx
 from lxml import etree
 
 from src.core.panos_models import APIResponse, JobStatus, JobStatusResponse
+
+if TYPE_CHECKING:
+    from src.core.state_schemas import DeviceContext
 
 logger = logging.getLogger(__name__)
 
@@ -42,30 +45,134 @@ def build_xpath(
     name: Optional[str] = None,
     location: str = "vsys1",
     rule_base: Optional[str] = None,
+    device_context: Optional["DeviceContext"] = None,
+    template_stack: Optional[str] = None,
 ) -> str:
     """Build XPath for PAN-OS configuration objects.
+
+    Supports both firewall and Panorama XPath generation based on device context.
+    For Panorama, generates paths for shared, device-group, template, or template-stack contexts.
+
+    Context selection priority: Template > Device-Group > Shared
+    Template-Stack is a special case that references template entries.
 
     Args:
         object_type: Type of object (address, service, security-policy, etc.)
         name: Optional specific object name
-        location: Virtual system location (default: vsys1)
+        location: Virtual system location (default: vsys1) - used for firewall
         rule_base: For policies, the rulebase type (security, nat, etc.)
+        device_context: Device context dict with device_type, vsys, device_group, template
+        template_stack: Optional template stack name (for Panorama template-stack context)
 
     Returns:
         XPath string
     """
+    from src.core.panos_models import DeviceType
+
+    # Determine device type and context from device_context or defaults
+    device_type = DeviceType.FIREWALL
+    vsys = location  # Default to provided location
+    device_group = None
+    template = None
+
+    if device_context:
+        device_type = device_context.get("device_type", DeviceType.FIREWALL)
+        vsys = device_context.get("vsys", location)
+        device_group = device_context.get("device_group")
+        template = device_context.get("template")
+
+    # Panorama XPath generation
+    if device_type == DeviceType.PANORAMA:
+        # Context selection priority: Template > Device-Group > Shared
+        # Template-Stack is handled separately as it references templates
+
+        if template_stack:
+            # Template-Stack context: /config/devices/entry[@name='localhost.localdomain']/template-stack/entry[@name='{stack}']
+            # Template stacks don't directly contain objects, they reference templates
+            # For object operations, we still use the template context
+            base_path = f"/config/devices/entry[@name='localhost.localdomain']/template-stack/entry[@name='{template_stack}']"
+            # Note: Template stacks reference templates, so object operations typically
+            # need to be done on the underlying templates, not the stack itself
+            # This path is mainly for stack management operations
+            if object_type in ["template-stack"]:
+                if name:
+                    return f"{base_path}/entry[@name='{name}']"
+                return base_path
+            # For other objects, fall through to template or shared context
+
+        if template:
+            # Template context: /config/devices/entry[@name='localhost.localdomain']/template/entry[@name='{tpl}']/config/{object_type}
+            base_path = f"/config/devices/entry[@name='localhost.localdomain']/template/entry[@name='{template}']/config"
+            if vsys and vsys != "shared":
+                base_path = f"{base_path}/vsys/entry[@name='{vsys}']"
+        elif device_group:
+            # Device-Group context: /config/devices/entry[@name='localhost.localdomain']/device-group/entry[@name='{dg}']/{object_type}
+            base_device_path = f"/config/devices/entry[@name='localhost.localdomain']/device-group/entry[@name='{device_group}']"
+            if vsys and vsys != "shared":
+                # Multi-vsys device group
+                base_path = f"{base_device_path}/vsys/entry[@name='{vsys}']"
+            else:
+                # Shared device group (no vsys)
+                base_path = base_device_path
+        else:
+            # Shared context (default for Panorama): /config/shared/{object_type}
+            base_path = "/config/shared"
+
+        # Build object-specific paths
+        object_paths = {
+            "address": f"{base_path}/address",
+            "address-group": f"{base_path}/address-group",
+            "service": f"{base_path}/service",
+            "service-group": f"{base_path}/service-group",
+            "tag": f"{base_path}/tag",
+        }
+
+        # Policy rules
+        if object_type in ["security-policy", "nat-policy"]:
+            policy_type = "security" if object_type == "security-policy" else "nat"
+            base = f"{base_path}/rulebase/{policy_type}/rules"
+            if name:
+                return f"{base}/entry[@name='{name}']"
+            return base
+
+        # Panorama-specific object types
+        if object_type == "device-group":
+            base = "/config/devices/entry[@name='localhost.localdomain']/device-group"
+            if name:
+                return f"{base}/entry[@name='{name}']"
+            return base
+
+        if object_type == "template":
+            base = "/config/devices/entry[@name='localhost.localdomain']/template"
+            if name:
+                return f"{base}/entry[@name='{name}']"
+            return base
+
+        if object_type == "template-stack":
+            base = "/config/devices/entry[@name='localhost.localdomain']/template-stack"
+            if name:
+                return f"{base}/entry[@name='{name}']"
+            return base
+
+        if object_type in object_paths:
+            base = object_paths[object_type]
+            if name:
+                return f"{base}/entry[@name='{name}']"
+            return base
+
+    # Firewall XPath generation (default) - backward compatible
     base_paths = {
-        "address": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{location}']/address",
-        "address-group": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{location}']/address-group",
-        "service": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{location}']/service",
-        "service-group": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{location}']/service-group",
-        "tag": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{location}']/tag",
+        "address": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{vsys}']/address",
+        "address-group": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{vsys}']/address-group",
+        "service": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{vsys}']/service",
+        "service-group": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{vsys}']/service-group",
+        "tag": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{vsys}']/tag",
     }
 
     # Policy rules have different paths
     if object_type in ["security-policy", "nat-policy"]:
         policy_type = "security" if object_type == "security-policy" else "nat"
-        base = f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{location}']/rulebase/{policy_type}/rules"
+        base = f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{vsys}']/rulebase/{policy_type}/rules"
         if name:
             return f"{base}/entry[@name='{name}']"
         return base
@@ -129,6 +236,13 @@ def build_object_xml(object_type: str, data: dict) -> str:
         ... })
     """
     from src.core.panos_xpath_map import PanOSXPathMap
+    from src.core.xml_validation import validate_object_structure
+
+    # Pre-validate object structure before building XML
+    validation_result = validate_object_structure(object_type, data)
+    if not validation_result.is_valid:
+        error_msg = "; ".join(validation_result.errors)
+        raise PanOSValidationError(f"Validation failed for {object_type}: {error_msg}")
 
     # Get structure definition
     normalized_type = object_type.replace("-", "_")
@@ -290,8 +404,19 @@ async def set_config(xpath: str, element: etree._Element, client: httpx.AsyncCli
 
     Raises:
         PanOSAPIError: If set operation fails
+        PanOSValidationError: If XML validation fails
     """
+    from src.core.xml_validation import extract_object_type_from_xpath, validate_xml_string
+
     xml_str = etree.tostring(element, encoding="unicode")
+
+    # Validate XML before submission
+    object_type = extract_object_type_from_xpath(xpath)
+    validation_result = validate_xml_string(xml_str, object_type)
+    if not validation_result.is_valid:
+        error_msg = "; ".join(validation_result.errors)
+        raise PanOSValidationError(f"XML validation failed: {error_msg}")
+
     params = {"type": "config", "action": "set", "xpath": xpath}
 
     logger.debug(f"Setting config at {xpath}")
@@ -313,8 +438,19 @@ async def edit_config(
 
     Raises:
         PanOSAPIError: If edit operation fails
+        PanOSValidationError: If XML validation fails
     """
+    from src.core.xml_validation import extract_object_type_from_xpath, validate_xml_string
+
     xml_str = etree.tostring(element, encoding="unicode")
+
+    # Validate XML before submission
+    object_type = extract_object_type_from_xpath(xpath)
+    validation_result = validate_xml_string(xml_str, object_type)
+    if not validation_result.is_valid:
+        error_msg = "; ".join(validation_result.errors)
+        raise PanOSValidationError(f"XML validation failed: {error_msg}")
+
     params = {"type": "config", "action": "edit", "xpath": xpath}
 
     logger.debug(f"Editing config at {xpath}")
@@ -467,3 +603,52 @@ async def operational_command(cmd: str, client: httpx.AsyncClient) -> etree._Ele
 
     # Return full response element for parsing by caller
     return response.xml_element
+
+
+async def query_logs(
+    log_type: str,
+    query: str,
+    nlogs: int = 100,
+    skip: int = 0,
+    client: Optional[httpx.AsyncClient] = None,
+) -> etree._Element:
+    """Query PAN-OS logs.
+
+    Args:
+        log_type: Log type (traffic, threat, system, config, etc.)
+        query: Log query filter (PAN-OS query syntax)
+        nlogs: Number of logs to retrieve (default: 100, max: 5000)
+        skip: Number of logs to skip (for pagination)
+        client: Optional async HTTP client
+
+    Returns:
+        lxml Element with log entries
+
+    Example:
+        # Query traffic logs for web browsing
+        result = await query_logs(
+            "traffic",
+            "(addr.src in 10.0.0.0/8) and (app eq 'web-browsing')",
+            nlogs=50
+        )
+    """
+    if client is None:
+        from src.core.client import get_panos_client
+
+        client = await get_panos_client()
+
+    # Build log query XML
+    cmd = f"""
+    <show>
+      <log>
+        <{log_type}>
+          <query>{query}</query>
+          <nlogs>{nlogs}</nlogs>
+          <skip>{skip}</skip>
+        </{log_type}>
+      </log>
+    </show>
+    """
+
+    result = await operational_command(cmd.strip(), client)
+    return result

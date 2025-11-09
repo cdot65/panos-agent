@@ -86,6 +86,20 @@ class Settings(BaseSettings):
     default_mode: Literal["autonomous", "deterministic"] = "autonomous"
     log_level: str = "INFO"
 
+    # Cache Configuration (Phase 3.1.3)
+    cache_enabled: bool = Field(
+        default=True,
+        description="Enable intelligent caching for PAN-OS API config retrieval",
+    )
+    cache_ttl_seconds: int = Field(
+        default=60,
+        description="Time-to-live for cached configurations in seconds",
+    )
+    cache_max_entries: int = Field(
+        default=1000,
+        description="Maximum number of cache entries per hostname (prevents unbounded growth)",
+    )
+
 
 # Timeout constants for graph invocations
 # These prevent runaway executions and ensure responsive behavior

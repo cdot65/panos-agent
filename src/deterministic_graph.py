@@ -9,12 +9,15 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.store.base import BaseStore
 
 from src.core.checkpoint_manager import get_checkpointer
+from src.core.client import get_device_context
 from src.core.memory_store import store_workflow_execution
 from src.core.state_schemas import DeterministicState
+from src.core.store_context import set_store
 from src.core.subgraphs.deterministic import create_deterministic_workflow_subgraph
 
 logger = logging.getLogger(__name__)
@@ -25,6 +28,32 @@ try:
 except ImportError:
     logger.warning("Workflow definitions not found, using empty dict")
     WORKFLOWS = {}
+
+
+async def initialize_device_context(state: DeterministicState) -> DeterministicState:
+    """Initialize device context at graph start.
+
+    Detects device type (Firewall or Panorama) and populates device context
+    in state for context-aware operations.
+
+    Args:
+        state: Current deterministic state
+
+    Returns:
+        Updated state with device_context
+    """
+    # Get device context from client (initializes connection if needed)
+    device_context = await get_device_context()
+
+    if device_context:
+        logger.info(
+            f"Device detected: {device_context['device_type']} "
+            f"(model: {device_context['model']}, version: {device_context['version']})"
+        )
+        return {"device_context": device_context}
+    else:
+        logger.warning("Failed to detect device context - proceeding without device info")
+        return {}  # Return empty dict to avoid changing state
 
 
 async def load_workflow_definition(state: DeterministicState) -> DeterministicState:
@@ -38,6 +67,18 @@ async def load_workflow_definition(state: DeterministicState) -> DeterministicSt
     Returns:
         Updated state with workflow steps loaded
     """
+    from src.core.client import get_device_context
+
+    # Initialize device context if not already set
+    device_context = state.get("device_context")
+    if not device_context:
+        device_context = await get_device_context()
+        if device_context:
+            logger.debug(
+                f"Initialized device context: {device_context['device_type'].value} "
+                f"(vsys: {device_context.get('vsys', 'vsys1')})"
+            )
+
     # Extract workflow name from last message
     last_message = state["messages"][-1]
     user_input = last_message.content
@@ -54,7 +95,7 @@ async def load_workflow_definition(state: DeterministicState) -> DeterministicSt
 
     # If workflow_steps are already provided in state, use them (for testing/direct invocation)
     if "workflow_steps" in state and state["workflow_steps"]:
-        return {
+        result = {
             **state,
             "current_step_index": 0,
             "step_results": [],
@@ -62,6 +103,9 @@ async def load_workflow_definition(state: DeterministicState) -> DeterministicSt
             "workflow_complete": False,
             "error_occurred": False,
         }
+        if device_context:
+            result["device_context"] = device_context
+        return result
 
     # Look up workflow definition
     if workflow_name not in WORKFLOWS:
@@ -85,7 +129,7 @@ async def load_workflow_definition(state: DeterministicState) -> DeterministicSt
 
     workflow_def = WORKFLOWS[workflow_name]
 
-    return {
+    result = {
         **state,
         "workflow_steps": workflow_def["steps"],
         "current_step_index": 0,
@@ -94,6 +138,9 @@ async def load_workflow_definition(state: DeterministicState) -> DeterministicSt
         "workflow_complete": False,
         "error_occurred": False,
     }
+    if device_context:
+        result["device_context"] = device_context
+    return result
 
 
 async def execute_workflow(state: DeterministicState, *, store: BaseStore) -> DeterministicState:
@@ -229,20 +276,28 @@ def route_after_load(state: DeterministicState) -> Literal["execute_workflow", "
     return "execute_workflow"
 
 
-def create_deterministic_graph(store: BaseStore | None = None, checkpointer=None) -> StateGraph:
+def create_deterministic_graph(config: RunnableConfig) -> StateGraph:
     """Create deterministic workflow execution graph.
 
     Args:
-        store: Optional BaseStore instance. If None, uses InMemoryStore.
-        checkpointer: Optional checkpointer instance. If None, uses sync SqliteSaver.
+        config: RunnableConfig from LangGraph Studio/CLI.
+                Can contain 'store' and 'checkpointer' in configurable dict.
 
     Returns:
         Compiled StateGraph with checkpointer and store for deterministic mode
     """
     from langgraph.store.memory import InMemoryStore
 
+    # Extract store and checkpointer from config if provided
+    configurable = config.get("configurable", {})
+    store = configurable.get("store")
+    checkpointer = configurable.get("checkpointer")
+
     if store is None:
         store = InMemoryStore()
+
+    # Set store in context for subgraphs and tools to access
+    set_store(store)
 
     if checkpointer is None:
         checkpointer = get_checkpointer()
@@ -250,11 +305,13 @@ def create_deterministic_graph(store: BaseStore | None = None, checkpointer=None
     workflow = StateGraph(DeterministicState)
 
     # Add nodes
+    workflow.add_node("initialize_device_context", initialize_device_context)
     workflow.add_node("load_workflow_definition", load_workflow_definition)
     workflow.add_node("execute_workflow", execute_workflow)
 
     # Add edges
-    workflow.add_edge(START, "load_workflow_definition")
+    workflow.add_edge(START, "initialize_device_context")
+    workflow.add_edge("initialize_device_context", "load_workflow_definition")
 
     # Conditional routing after load
     workflow.add_conditional_edges(

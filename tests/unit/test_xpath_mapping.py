@@ -494,5 +494,684 @@ class TestAPIXPath:
         assert xpath.endswith("/service")
 
 
+class TestPanoramaXPathFirewall:
+    """Test context-aware XPath generation for Firewall deployments."""
+
+    def test_firewall_address_default_vsys(self):
+        """Test firewall address XPath with default vsys."""
+        context = {"device_type": "FIREWALL"}
+        xpath = PanOSXPathMap.build_xpath("address", "web-server", context)
+
+        assert "/config/devices/entry[@name='localhost.localdomain']" in xpath
+        assert "/vsys/entry[@name='vsys1']" in xpath
+        assert "/address/entry[@name='web-server']" in xpath
+
+    def test_firewall_address_custom_vsys(self):
+        """Test firewall address XPath with custom vsys."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("address", "web-server", context)
+
+        assert "/vsys/entry[@name='vsys2']" in xpath
+        assert "/address/entry[@name='web-server']" in xpath
+
+    def test_firewall_service_xpath(self):
+        """Test firewall service XPath."""
+        context = {"device_type": "FIREWALL"}
+        xpath = PanOSXPathMap.build_xpath("service", "http-8080", context)
+
+        assert "vsys1" in xpath
+        assert "service/entry[@name='http-8080']" in xpath
+
+    def test_firewall_security_policy_xpath(self):
+        """Test firewall security policy XPath."""
+        context = {"device_type": "FIREWALL"}
+        xpath = PanOSXPathMap.build_xpath("security_policy", "allow-web", context)
+
+        assert "vsys1" in xpath
+        assert "rulebase/security/rules/entry[@name='allow-web']" in xpath
+
+    def test_firewall_list_xpath(self):
+        """Test firewall list XPath."""
+        context = {"device_type": "FIREWALL"}
+        xpath = PanOSXPathMap.build_xpath("address_list", device_context=context)
+
+        assert "vsys1" in xpath
+        assert xpath.endswith("/address")
+
+    def test_firewall_no_context_defaults_to_firewall(self):
+        """Test that no context defaults to firewall behavior."""
+        xpath = PanOSXPathMap.build_xpath("address", "test")
+
+        assert "vsys1" in xpath
+        assert "/address/entry[@name='test']" in xpath
+
+
+class TestPanoramaXPathShared:
+    """Test Panorama Shared context XPath generation."""
+
+    def test_panorama_shared_address(self):
+        """Test Panorama shared address XPath."""
+        context = {"device_type": "PANORAMA"}
+        xpath = PanOSXPathMap.build_xpath("address", "web-server", context)
+
+        assert xpath == "/config/shared/address/entry[@name='web-server']"
+
+    def test_panorama_shared_address_group(self):
+        """Test Panorama shared address-group XPath."""
+        context = {"device_type": "PANORAMA"}
+        xpath = PanOSXPathMap.build_xpath("address_group", "web-servers", context)
+
+        assert xpath == "/config/shared/address-group/entry[@name='web-servers']"
+
+    def test_panorama_shared_service(self):
+        """Test Panorama shared service XPath."""
+        context = {"device_type": "PANORAMA"}
+        xpath = PanOSXPathMap.build_xpath("service", "http-8080", context)
+
+        assert xpath == "/config/shared/service/entry[@name='http-8080']"
+
+    def test_panorama_shared_service_group(self):
+        """Test Panorama shared service-group XPath."""
+        context = {"device_type": "PANORAMA"}
+        xpath = PanOSXPathMap.build_xpath("service_group", "web-services", context)
+
+        assert xpath == "/config/shared/service-group/entry[@name='web-services']"
+
+    def test_panorama_shared_list(self):
+        """Test Panorama shared list XPath."""
+        context = {"device_type": "PANORAMA"}
+        xpath = PanOSXPathMap.build_xpath("address_list", device_context=context)
+
+        assert xpath == "/config/shared/address"
+
+
+class TestPanoramaXPathDeviceGroup:
+    """Test Panorama Device-Group context XPath generation."""
+
+    def test_device_group_address(self):
+        """Test device-group address XPath."""
+        context = {"device_type": "PANORAMA", "device_group": "production"}
+        xpath = PanOSXPathMap.build_xpath("address", "web-server", context)
+
+        assert "/config/devices/entry[@name='localhost.localdomain']" in xpath
+        assert "/device-group/entry[@name='production']" in xpath
+        assert "/address/entry[@name='web-server']" in xpath
+
+    def test_device_group_security_policy(self):
+        """Test device-group security policy XPath."""
+        context = {"device_type": "PANORAMA", "device_group": "dmz"}
+        xpath = PanOSXPathMap.build_xpath("security_policy", "allow-web", context)
+
+        assert "/device-group/entry[@name='dmz']" in xpath
+        assert "/rulebase/security/rules/entry[@name='allow-web']" in xpath
+
+    def test_device_group_nat_policy(self):
+        """Test device-group NAT policy XPath."""
+        context = {"device_type": "PANORAMA", "device_group": "production"}
+        xpath = PanOSXPathMap.build_xpath("nat_policy", "outbound-nat", context)
+
+        assert "/device-group/entry[@name='production']" in xpath
+        assert "/rulebase/nat/rules/entry[@name='outbound-nat']" in xpath
+
+    def test_device_group_service(self):
+        """Test device-group service XPath."""
+        context = {"device_type": "PANORAMA", "device_group": "branch"}
+        xpath = PanOSXPathMap.build_xpath("service", "custom-svc", context)
+
+        assert "/device-group/entry[@name='branch']" in xpath
+        assert "/service/entry[@name='custom-svc']" in xpath
+
+    def test_device_group_list(self):
+        """Test device-group list XPath."""
+        context = {"device_type": "PANORAMA", "device_group": "production"}
+        xpath = PanOSXPathMap.build_xpath("service_list", device_context=context)
+
+        assert "/device-group/entry[@name='production']" in xpath
+        assert xpath.endswith("/service")
+
+
+class TestPanoramaXPathTemplate:
+    """Test Panorama Template context XPath generation."""
+
+    def test_template_address(self):
+        """Test template address XPath."""
+        context = {"device_type": "PANORAMA", "template": "dmz-template"}
+        xpath = PanOSXPathMap.build_xpath("address", "web-server", context)
+
+        assert "/config/devices/entry[@name='localhost.localdomain']" in xpath
+        assert "/template/entry[@name='dmz-template']/config" in xpath
+        assert "/address/entry[@name='web-server']" in xpath
+
+    def test_template_service(self):
+        """Test template service XPath."""
+        context = {"device_type": "PANORAMA", "template": "branch-template"}
+        xpath = PanOSXPathMap.build_xpath("service", "custom-svc", context)
+
+        assert "/template/entry[@name='branch-template']/config" in xpath
+        assert "/service/entry[@name='custom-svc']" in xpath
+
+    def test_template_list(self):
+        """Test template list XPath."""
+        context = {"device_type": "PANORAMA", "template": "dmz-template"}
+        xpath = PanOSXPathMap.build_xpath("address_list", device_context=context)
+
+        assert "/template/entry[@name='dmz-template']/config" in xpath
+        assert xpath.endswith("/address")
+
+
+class TestPanoramaXPathTemplateStack:
+    """Test Panorama Template-Stack context XPath generation."""
+
+    def test_template_stack_address(self):
+        """Test template-stack address XPath."""
+        context = {"device_type": "PANORAMA", "template_stack": "prod-stack"}
+        xpath = PanOSXPathMap.build_xpath("address", "web-server", context)
+
+        assert "/config/devices/entry[@name='localhost.localdomain']" in xpath
+        assert "/template-stack/entry[@name='prod-stack']" in xpath
+        assert "/address/entry[@name='web-server']" in xpath
+
+    def test_template_stack_service(self):
+        """Test template-stack service XPath."""
+        context = {"device_type": "PANORAMA", "template_stack": "branch-stack"}
+        xpath = PanOSXPathMap.build_xpath("service", "custom-svc", context)
+
+        assert "/template-stack/entry[@name='branch-stack']" in xpath
+        assert "/service/entry[@name='custom-svc']" in xpath
+
+
+class TestPanoramaContextPriority:
+    """Test context selection priority for Panorama."""
+
+    def test_template_over_device_group(self):
+        """Test that template takes priority over device-group."""
+        context = {
+            "device_type": "PANORAMA",
+            "template": "dmz-template",
+            "device_group": "production",
+        }
+        xpath = PanOSXPathMap.build_xpath("address", "test", context)
+
+        # Should use template, not device-group
+        assert "/template/entry[@name='dmz-template']/config" in xpath
+        assert "/device-group/" not in xpath
+
+    def test_template_stack_over_device_group(self):
+        """Test that template-stack takes priority over device-group."""
+        context = {
+            "device_type": "PANORAMA",
+            "template_stack": "prod-stack",
+            "device_group": "production",
+        }
+        xpath = PanOSXPathMap.build_xpath("address", "test", context)
+
+        # Should use template-stack, not device-group
+        assert "/template-stack/entry[@name='prod-stack']" in xpath
+        assert "/device-group/" not in xpath
+
+    def test_template_over_template_stack(self):
+        """Test that template takes priority over template-stack."""
+        context = {
+            "device_type": "PANORAMA",
+            "template": "dmz-template",
+            "template_stack": "prod-stack",
+        }
+        xpath = PanOSXPathMap.build_xpath("address", "test", context)
+
+        # Should use template, not template-stack
+        assert "/template/entry[@name='dmz-template']/config" in xpath
+        assert "/template-stack/" not in xpath
+
+    def test_device_group_over_shared(self):
+        """Test that device-group takes priority over shared."""
+        context = {
+            "device_type": "PANORAMA",
+            "device_group": "production",
+        }
+        xpath = PanOSXPathMap.build_xpath("address", "test", context)
+
+        # Should use device-group, not shared
+        assert "/device-group/entry[@name='production']" in xpath
+        assert xpath != "/config/shared/address/entry[@name='test']"
+
+    def test_shared_as_fallback(self):
+        """Test that shared is used when no other context provided."""
+        context = {"device_type": "PANORAMA"}
+        xpath = PanOSXPathMap.build_xpath("address", "test", context)
+
+        # Should fall back to shared
+        assert xpath == "/config/shared/address/entry[@name='test']"
+
+
+class TestPanoramaSpecificObjects:
+    """Test Panorama-specific object XPaths (device-group, template, template-stack)."""
+
+    def test_device_group_object_xpath(self):
+        """Test device-group object XPath at Panorama root."""
+        context = {"device_type": "PANORAMA"}
+        xpath = PanOSXPathMap.build_xpath("device_group", "production", context)
+
+        # Device-group objects are at panorama root level
+        assert "/config/devices/entry[@name='localhost.localdomain']" in xpath
+        assert "/device-group/entry[@name='production']" in xpath
+
+    def test_device_group_list_xpath(self):
+        """Test device-group list XPath."""
+        context = {"device_type": "PANORAMA"}
+        xpath = PanOSXPathMap.build_xpath("device_group_list", device_context=context)
+
+        assert "/config/devices/entry[@name='localhost.localdomain']" in xpath
+        assert xpath.endswith("/device-group")
+
+    def test_template_object_xpath(self):
+        """Test template object XPath at Panorama root."""
+        context = {"device_type": "PANORAMA"}
+        xpath = PanOSXPathMap.build_xpath("template", "dmz-template", context)
+
+        assert "/config/devices/entry[@name='localhost.localdomain']" in xpath
+        assert "/template/entry[@name='dmz-template']" in xpath
+
+    def test_template_list_xpath(self):
+        """Test template list XPath."""
+        context = {"device_type": "PANORAMA"}
+        xpath = PanOSXPathMap.build_xpath("template_list", device_context=context)
+
+        assert "/config/devices/entry[@name='localhost.localdomain']" in xpath
+        assert xpath.endswith("/template")
+
+    def test_template_stack_object_xpath(self):
+        """Test template-stack object XPath at Panorama root."""
+        context = {"device_type": "PANORAMA"}
+        xpath = PanOSXPathMap.build_xpath("template_stack", "prod-stack", context)
+
+        assert "/config/devices/entry[@name='localhost.localdomain']" in xpath
+        assert "/template-stack/entry[@name='prod-stack']" in xpath
+
+    def test_template_stack_list_xpath(self):
+        """Test template-stack list XPath."""
+        context = {"device_type": "PANORAMA"}
+        xpath = PanOSXPathMap.build_xpath("template_stack_list", device_context=context)
+
+        assert "/config/devices/entry[@name='localhost.localdomain']" in xpath
+        assert xpath.endswith("/template-stack")
+
+
+class TestBackwardCompatibility:
+    """Test backward compatibility with legacy get_xpath method."""
+
+    def test_legacy_get_xpath_still_works(self):
+        """Test that legacy get_xpath method still works."""
+        xpath = PanOSXPathMap.get_xpath("address", "test")
+
+        assert xpath
+        assert "vsys1" in xpath
+        assert "address/entry[@name='test']" in xpath
+
+    def test_legacy_list_xpath_still_works(self):
+        """Test that legacy list xpath still works."""
+        xpath = PanOSXPathMap.get_xpath("service_list")
+
+        assert xpath
+        assert "vsys1" in xpath
+        assert xpath.endswith("/service")
+
+    def test_build_xpath_without_context_matches_legacy(self):
+        """Test that build_xpath without context matches legacy behavior."""
+        legacy_xpath = PanOSXPathMap.get_xpath("address", "test")
+        new_xpath = PanOSXPathMap.build_xpath("address", "test")
+
+        # Should produce same result (defaults to firewall vsys1)
+        assert new_xpath == legacy_xpath
+
+
+class TestXPathHelperMethods:
+    """Test internal XPath helper methods."""
+
+    def test_get_object_path_address(self):
+        """Test _get_object_path for address."""
+        path = PanOSXPathMap._get_object_path("address", "test")
+        assert path == "address/entry[@name='test']"
+
+    def test_get_object_path_list(self):
+        """Test _get_object_path for list."""
+        path = PanOSXPathMap._get_object_path("service_list")
+        assert path == "service"
+
+    def test_get_firewall_base_path_default(self):
+        """Test _get_firewall_base_path with defaults."""
+        base = PanOSXPathMap._get_firewall_base_path()
+        assert base == "/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='vsys1']"
+
+    def test_get_firewall_base_path_custom_vsys(self):
+        """Test _get_firewall_base_path with custom vsys."""
+        base = PanOSXPathMap._get_firewall_base_path({"vsys": "vsys3"})
+        assert base == "/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='vsys3']"
+
+    def test_get_panorama_base_path_shared(self):
+        """Test _get_panorama_base_path defaults to shared."""
+        base = PanOSXPathMap._get_panorama_base_path({})
+        assert base == "/config/shared"
+
+    def test_get_panorama_base_path_device_group(self):
+        """Test _get_panorama_base_path with device-group."""
+        base = PanOSXPathMap._get_panorama_base_path({"device_group": "prod"})
+        assert base == "/config/devices/entry[@name='localhost.localdomain']/device-group/entry[@name='prod']"
+
+    def test_get_panorama_base_path_template(self):
+        """Test _get_panorama_base_path with template."""
+        base = PanOSXPathMap._get_panorama_base_path({"template": "dmz"})
+        assert base == "/config/devices/entry[@name='localhost.localdomain']/template/entry[@name='dmz']/config"
+
+    def test_get_panorama_base_path_template_stack(self):
+        """Test _get_panorama_base_path with template-stack."""
+        base = PanOSXPathMap._get_panorama_base_path({"template_stack": "stack1"})
+        assert base == "/config/devices/entry[@name='localhost.localdomain']/template-stack/entry[@name='stack1']"
+
+
+class TestMultiVsysXPath:
+    """Test XPath generation for multi-vsys firewall configurations.
+    
+    Tests comprehensive vsys support (vsys1, vsys2, vsys3, vsys4) across all object types.
+    Ensures backward compatibility when vsys not specified (defaults to vsys1).
+    """
+
+    # ============================================================================
+    # Address Objects - Multi-vsys
+    # ============================================================================
+
+    def test_address_vsys1(self):
+        """Address object in vsys1."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys1"}
+        xpath = PanOSXPathMap.build_xpath("address", "test-addr", context)
+        
+        assert "/config/devices/entry[@name='localhost.localdomain']" in xpath
+        assert "/vsys/entry[@name='vsys1']" in xpath
+        assert "/address/entry[@name='test-addr']" in xpath
+
+    def test_address_vsys2(self):
+        """Address object in vsys2."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("address", "test-addr", context)
+        
+        assert "/vsys/entry[@name='vsys2']" in xpath
+        assert "/address/entry[@name='test-addr']" in xpath
+
+    def test_address_vsys3(self):
+        """Address object in vsys3."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys3"}
+        xpath = PanOSXPathMap.build_xpath("address", "test-addr", context)
+        
+        assert "/vsys/entry[@name='vsys3']" in xpath
+        assert "/address/entry[@name='test-addr']" in xpath
+
+    def test_address_vsys4(self):
+        """Address object in vsys4."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys4"}
+        xpath = PanOSXPathMap.build_xpath("address", "test-addr", context)
+        
+        assert "/vsys/entry[@name='vsys4']" in xpath
+        assert "/address/entry[@name='test-addr']" in xpath
+
+    def test_address_list_vsys2(self):
+        """Address list in vsys2."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("address_list", device_context=context)
+        
+        assert "/vsys/entry[@name='vsys2']" in xpath
+        assert xpath.endswith("/address")
+
+    # ============================================================================
+    # Service Objects - Multi-vsys
+    # ============================================================================
+
+    def test_service_vsys1(self):
+        """Service object in vsys1."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys1"}
+        xpath = PanOSXPathMap.build_xpath("service", "http-8080", context)
+        
+        assert "/vsys/entry[@name='vsys1']" in xpath
+        assert "/service/entry[@name='http-8080']" in xpath
+
+    def test_service_vsys2(self):
+        """Service object in vsys2."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("service", "http-8080", context)
+        
+        assert "/vsys/entry[@name='vsys2']" in xpath
+        assert "/service/entry[@name='http-8080']" in xpath
+
+    def test_service_vsys3(self):
+        """Service object in vsys3."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys3"}
+        xpath = PanOSXPathMap.build_xpath("service", "http-8080", context)
+        
+        assert "/vsys/entry[@name='vsys3']" in xpath
+        assert "/service/entry[@name='http-8080']" in xpath
+
+    def test_service_list_vsys3(self):
+        """Service list in vsys3."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys3"}
+        xpath = PanOSXPathMap.build_xpath("service_list", device_context=context)
+        
+        assert "/vsys/entry[@name='vsys3']" in xpath
+        assert xpath.endswith("/service")
+
+    # ============================================================================
+    # Address Groups - Multi-vsys
+    # ============================================================================
+
+    def test_address_group_vsys1(self):
+        """Address group in vsys1."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys1"}
+        xpath = PanOSXPathMap.build_xpath("address_group", "web-servers", context)
+        
+        assert "/vsys/entry[@name='vsys1']" in xpath
+        assert "/address-group/entry[@name='web-servers']" in xpath
+
+    def test_address_group_vsys2(self):
+        """Address group in vsys2."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("address_group", "web-servers", context)
+        
+        assert "/vsys/entry[@name='vsys2']" in xpath
+        assert "/address-group/entry[@name='web-servers']" in xpath
+
+    def test_address_group_vsys4(self):
+        """Address group in vsys4."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys4"}
+        xpath = PanOSXPathMap.build_xpath("address_group", "web-servers", context)
+        
+        assert "/vsys/entry[@name='vsys4']" in xpath
+        assert "/address-group/entry[@name='web-servers']" in xpath
+
+    # ============================================================================
+    # Service Groups - Multi-vsys
+    # ============================================================================
+
+    def test_service_group_vsys2(self):
+        """Service group in vsys2."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("service_group", "web-services", context)
+        
+        assert "/vsys/entry[@name='vsys2']" in xpath
+        assert "/service-group/entry[@name='web-services']" in xpath
+
+    def test_service_group_vsys3(self):
+        """Service group in vsys3."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys3"}
+        xpath = PanOSXPathMap.build_xpath("service_group", "web-services", context)
+        
+        assert "/vsys/entry[@name='vsys3']" in xpath
+        assert "/service-group/entry[@name='web-services']" in xpath
+
+    # ============================================================================
+    # Security Rules - Multi-vsys
+    # ============================================================================
+
+    def test_security_policy_vsys1(self):
+        """Security policy in vsys1."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys1"}
+        xpath = PanOSXPathMap.build_xpath("security_policy", "allow-web", context)
+        
+        assert "/vsys/entry[@name='vsys1']" in xpath
+        assert "/rulebase/security/rules/entry[@name='allow-web']" in xpath
+
+    def test_security_policy_vsys2(self):
+        """Security policy in vsys2."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("security_policy", "allow-web", context)
+        
+        assert "/vsys/entry[@name='vsys2']" in xpath
+        assert "/rulebase/security/rules/entry[@name='allow-web']" in xpath
+
+    def test_security_policy_vsys3(self):
+        """Security policy in vsys3."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys3"}
+        xpath = PanOSXPathMap.build_xpath("security_policy", "allow-web", context)
+        
+        assert "/vsys/entry[@name='vsys3']" in xpath
+        assert "/rulebase/security/rules/entry[@name='allow-web']" in xpath
+
+    def test_security_policy_vsys4(self):
+        """Security policy in vsys4."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys4"}
+        xpath = PanOSXPathMap.build_xpath("security_policy", "allow-web", context)
+        
+        assert "/vsys/entry[@name='vsys4']" in xpath
+        assert "/rulebase/security/rules/entry[@name='allow-web']" in xpath
+
+    def test_security_policy_list_vsys2(self):
+        """Security policy list in vsys2."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("security_policy_list", device_context=context)
+        
+        assert "/vsys/entry[@name='vsys2']" in xpath
+        assert xpath.endswith("/rulebase/security/rules")
+
+    # ============================================================================
+    # NAT Rules - Multi-vsys
+    # ============================================================================
+
+    def test_nat_policy_vsys1(self):
+        """NAT policy in vsys1."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys1"}
+        xpath = PanOSXPathMap.build_xpath("nat_policy", "outbound-nat", context)
+        
+        assert "/vsys/entry[@name='vsys1']" in xpath
+        assert "/rulebase/nat/rules/entry[@name='outbound-nat']" in xpath
+
+    def test_nat_policy_vsys2(self):
+        """NAT policy in vsys2."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("nat_policy", "outbound-nat", context)
+        
+        assert "/vsys/entry[@name='vsys2']" in xpath
+        assert "/rulebase/nat/rules/entry[@name='outbound-nat']" in xpath
+
+    def test_nat_policy_vsys3(self):
+        """NAT policy in vsys3."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys3"}
+        xpath = PanOSXPathMap.build_xpath("nat_policy", "outbound-nat", context)
+        
+        assert "/vsys/entry[@name='vsys3']" in xpath
+        assert "/rulebase/nat/rules/entry[@name='outbound-nat']" in xpath
+
+    def test_nat_policy_list_vsys4(self):
+        """NAT policy list in vsys4."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys4"}
+        xpath = PanOSXPathMap.build_xpath("nat_policy_list", device_context=context)
+        
+        assert "/vsys/entry[@name='vsys4']" in xpath
+        assert xpath.endswith("/rulebase/nat/rules")
+
+    # ============================================================================
+    # Backward Compatibility - Default to vsys1
+    # ============================================================================
+
+    def test_default_vsys_when_not_specified(self):
+        """Default to vsys1 when vsys not in context."""
+        context = {"device_type": "FIREWALL"}
+        xpath = PanOSXPathMap.build_xpath("address", "test-addr", context)
+        
+        # Should default to vsys1
+        assert "/vsys/entry[@name='vsys1']" in xpath
+        assert "/address/entry[@name='test-addr']" in xpath
+
+    def test_default_vsys_with_empty_context(self):
+        """Default to vsys1 with empty context."""
+        xpath = PanOSXPathMap.build_xpath("service", "test-svc")
+        
+        # Should default to vsys1
+        assert "/vsys/entry[@name='vsys1']" in xpath
+        assert "/service/entry[@name='test-svc']" in xpath
+
+    def test_default_vsys_for_security_policy(self):
+        """Default to vsys1 for security policy when vsys not specified."""
+        context = {"device_type": "FIREWALL"}
+        xpath = PanOSXPathMap.build_xpath("security_policy", "allow-all", context)
+        
+        assert "/vsys/entry[@name='vsys1']" in xpath
+        assert "/rulebase/security/rules/entry[@name='allow-all']" in xpath
+
+    def test_default_vsys_for_nat_policy(self):
+        """Default to vsys1 for NAT policy when vsys not specified."""
+        context = {"device_type": "FIREWALL"}
+        xpath = PanOSXPathMap.build_xpath("nat_policy", "outbound", context)
+        
+        assert "/vsys/entry[@name='vsys1']" in xpath
+        assert "/rulebase/nat/rules/entry[@name='outbound']" in xpath
+
+    # ============================================================================
+    # Panorama Ignores Vsys
+    # ============================================================================
+
+    def test_panorama_ignores_vsys_shared(self):
+        """Panorama shared context ignores vsys parameter."""
+        context = {"device_type": "PANORAMA", "vsys": "vsys2"}
+        xpath = PanOSXPathMap.build_xpath("address", "test-addr", context)
+        
+        # Should use shared path, not vsys
+        assert xpath == "/config/shared/address/entry[@name='test-addr']"
+        assert "/vsys/" not in xpath
+
+    def test_panorama_ignores_vsys_device_group(self):
+        """Panorama device-group context ignores vsys parameter."""
+        context = {"device_type": "PANORAMA", "device_group": "production", "vsys": "vsys3"}
+        xpath = PanOSXPathMap.build_xpath("address", "test-addr", context)
+        
+        # Should use device-group path, not vsys
+        assert "/device-group/entry[@name='production']" in xpath
+        assert "/vsys/" not in xpath
+
+    def test_panorama_ignores_vsys_template(self):
+        """Panorama template context ignores vsys parameter."""
+        context = {"device_type": "PANORAMA", "template": "dmz-template", "vsys": "vsys4"}
+        xpath = PanOSXPathMap.build_xpath("address", "test-addr", context)
+        
+        # Should use template path, not vsys
+        assert "/template/entry[@name='dmz-template']/config" in xpath
+        assert "/vsys/" not in xpath
+
+    # ============================================================================
+    # Invalid/Custom Vsys Names
+    # ============================================================================
+
+    def test_custom_vsys_name(self):
+        """Support custom vsys names (non-standard)."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys-custom"}
+        xpath = PanOSXPathMap.build_xpath("address", "test-addr", context)
+        
+        assert "/vsys/entry[@name='vsys-custom']" in xpath
+        assert "/address/entry[@name='test-addr']" in xpath
+
+    def test_vsys_with_underscores(self):
+        """Support vsys names with underscores."""
+        context = {"device_type": "FIREWALL", "vsys": "vsys_tenant1"}
+        xpath = PanOSXPathMap.build_xpath("address", "test-addr", context)
+        
+        assert "/vsys/entry[@name='vsys_tenant1']" in xpath
+        assert "/address/entry[@name='test-addr']" in xpath
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

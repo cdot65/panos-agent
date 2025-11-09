@@ -63,3 +63,4 @@ docs/langgraph/
 docs/recommendations/
 panorama.xml
 evaluation_results/*.json
+*.pckl

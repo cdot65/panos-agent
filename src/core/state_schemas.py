@@ -11,6 +11,39 @@ from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
 # ============================================================================
+# Device Context
+# ============================================================================
+
+
+class DeviceContext(TypedDict):
+    """Device context for PAN-OS operations.
+
+    Provides device information for context-aware operations (Panorama vs Firewall).
+
+    Attributes:
+        device_type: Type of device (FIREWALL or PANORAMA)
+        hostname: Device hostname
+        model: Device model (e.g., PA-220, M-100)
+        version: PAN-OS software version
+        serial: Device serial number
+        vsys: Virtual system (for multi-vsys firewalls, default: vsys1)
+        device_group: Device group (for Panorama, optional)
+        template: Template name (for Panorama, optional)
+        platform: Platform information (optional)
+    """
+
+    device_type: str  # "FIREWALL" or "PANORAMA"
+    hostname: str
+    model: str
+    version: str
+    serial: str
+    vsys: Optional[str]
+    device_group: Optional[str]
+    template: Optional[str]
+    platform: Optional[str]
+
+
+# ============================================================================
 # Main Agent States (for top-level graphs)
 # ============================================================================
 
@@ -23,9 +56,11 @@ class AutonomousState(TypedDict):
 
     Attributes:
         messages: Conversation history (user prompts, agent responses, tool calls)
+        device_context: Device information for context-aware operations (optional)
     """
 
     messages: Annotated[Sequence[BaseMessage], add_messages]
+    device_context: Optional[DeviceContext]
 
 
 class DeterministicState(TypedDict):
@@ -42,6 +77,7 @@ class DeterministicState(TypedDict):
         continue_workflow: Whether to continue to next step (LLM decision)
         workflow_complete: Whether all steps finished
         error_occurred: Whether any step failed critically
+        device_context: Device information for context-aware operations (optional)
     """
 
     messages: Annotated[Sequence[BaseMessage], add_messages]
@@ -51,6 +87,7 @@ class DeterministicState(TypedDict):
     continue_workflow: bool
     workflow_complete: bool
     error_occurred: bool
+    device_context: Optional[DeviceContext]
 
 
 # ============================================================================

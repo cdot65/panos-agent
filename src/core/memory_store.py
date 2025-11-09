@@ -2,10 +2,16 @@
 
 Provides helper functions for storing and retrieving firewall configuration state
 and workflow execution history using LangGraph Store API.
+
+Also provides intelligent caching layer for PAN-OS API configuration retrieval
+to reduce redundant API calls through TTL-based caching with automatic invalidation.
 """
 
+import hashlib
 import logging
-from typing import Any
+import time
+from dataclasses import dataclass
+from typing import Any, Optional
 
 from langgraph.store.base import BaseStore
 
@@ -15,6 +21,74 @@ logger = logging.getLogger(__name__)
 NAMESPACE_FIREWALL_CONFIGS = "firewall_configs"
 NAMESPACE_WORKFLOW_HISTORY = "workflow_history"
 NAMESPACE_USER_PREFERENCES = "user_preferences"  # Reserved for future
+NAMESPACE_CONFIG_CACHE = "config_cache"  # For API response caching
+
+
+@dataclass
+class CacheEntry:
+    """Cached configuration entry.
+
+    Attributes:
+        xpath: XPath that was queried
+        xml_data: Raw XML string from firewall
+        timestamp: Unix timestamp when cached
+        ttl: Time-to-live in seconds (default 60)
+
+    Example:
+        ```python
+        entry = CacheEntry(
+            xpath="/config/.../address/entry[@name='web-1']",
+            xml_data="<entry name='web-1'>...</entry>",
+            timestamp=time.time(),
+            ttl=60
+        )
+        if entry.is_expired():
+            # Refetch from firewall
+        ```
+    """
+
+    xpath: str
+    xml_data: str
+    timestamp: float
+    ttl: int = 60
+
+    def is_expired(self) -> bool:
+        """Check if cache entry has expired.
+
+        Returns:
+            True if current time exceeds timestamp + ttl
+        """
+        return time.time() - self.timestamp > self.ttl
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for storage.
+
+        Returns:
+            Dictionary representation of cache entry
+        """
+        return {
+            "xpath": self.xpath,
+            "xml_data": self.xml_data,
+            "timestamp": self.timestamp,
+            "ttl": self.ttl,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "CacheEntry":
+        """Create CacheEntry from dictionary.
+
+        Args:
+            data: Dictionary with cache entry fields
+
+        Returns:
+            CacheEntry instance
+        """
+        return cls(
+            xpath=data["xpath"],
+            xml_data=data["xml_data"],
+            timestamp=data["timestamp"],
+            ttl=data.get("ttl", 60),
+        )
 
 
 def _sanitize_namespace_label(label: str) -> str:
@@ -30,6 +104,231 @@ def _sanitize_namespace_label(label: str) -> str:
         Sanitized label (e.g., "192_168_1_1")
     """
     return label.replace(".", "_")
+
+
+def _hash_xpath(xpath: str) -> str:
+    """Generate hash key for XPath.
+
+    Uses MD5 hash for efficient key generation while avoiding namespace key length issues.
+
+    Args:
+        xpath: XPath string to hash
+
+    Returns:
+        Hexadecimal hash string (32 characters)
+    """
+    return hashlib.md5(xpath.encode()).hexdigest()
+
+
+# =============================================================================
+# Configuration Caching Functions (Phase 3.1.3)
+# =============================================================================
+
+
+def cache_config(
+    hostname: str,
+    xpath: str,
+    xml_data: str,
+    store: BaseStore,
+    ttl: int = 60,
+) -> None:
+    """Cache firewall configuration data with TTL.
+
+    Stores raw XML response from firewall with expiration timestamp to reduce
+    redundant API calls for frequently accessed configurations.
+
+    Args:
+        hostname: Firewall hostname or IP address
+        xpath: XPath that was queried
+        xml_data: Raw XML string response from firewall
+        store: BaseStore instance from graph runtime
+        ttl: Time-to-live in seconds (default 60)
+
+    Example:
+        ```python
+        cache_config(
+            hostname="192.168.1.1",
+            xpath="/config/devices/.../address/entry[@name='web-1']",
+            xml_data="<entry name='web-1'><ip-netmask>10.0.0.1</ip-netmask></entry>",
+            store=store,
+            ttl=60
+        )
+        ```
+
+    Note:
+        - Uses MD5 hash of xpath as key for efficient storage
+        - Namespace: ("config_cache", "192_168_1_1")
+        - Automatically expires after TTL seconds
+    """
+    # Sanitize hostname for namespace
+    sanitized_hostname = _sanitize_namespace_label(hostname)
+    namespace = (NAMESPACE_CONFIG_CACHE, sanitized_hostname)
+
+    # Generate cache key from xpath hash
+    cache_key = _hash_xpath(xpath)
+
+    # Create cache entry
+    entry = CacheEntry(
+        xpath=xpath,
+        xml_data=xml_data,
+        timestamp=time.time(),
+        ttl=ttl,
+    )
+
+    try:
+        store.put(namespace, cache_key, entry.to_dict())
+        logger.debug(f"Cached config for xpath hash {cache_key[:8]}... (TTL={ttl}s)")
+    except Exception as e:
+        logger.error(f"Failed to cache config for {hostname}: {e}")
+
+
+def get_cached_config(
+    hostname: str,
+    xpath: str,
+    store: BaseStore,
+) -> Optional[str]:
+    """Retrieve cached configuration if not expired.
+
+    Checks cache for previously fetched configuration data. Returns None if
+    cache miss or entry has expired (past TTL).
+
+    Args:
+        hostname: Firewall hostname or IP address
+        xpath: XPath to lookup
+        store: BaseStore instance from graph runtime
+
+    Returns:
+        XML string if cache hit and not expired, None otherwise
+
+    Example:
+        ```python
+        xml = get_cached_config("192.168.1.1", xpath, store)
+        if xml:
+            # Cache HIT - use cached data (no API call needed)
+            logger.debug("Using cached configuration")
+        else:
+            # Cache MISS - fetch from firewall
+            xml = await get_config(xpath, client)
+            cache_config(hostname, xpath, xml, store)
+        ```
+
+    Note:
+        - Returns None if entry expired (timestamp + ttl < now)
+        - Expired entries are not automatically deleted (lazy expiration)
+    """
+    # Sanitize hostname for namespace
+    sanitized_hostname = _sanitize_namespace_label(hostname)
+    namespace = (NAMESPACE_CONFIG_CACHE, sanitized_hostname)
+
+    # Generate cache key from xpath hash
+    cache_key = _hash_xpath(xpath)
+
+    try:
+        result = store.get(namespace, cache_key)
+        if not result:
+            logger.debug(f"Cache MISS for xpath hash {cache_key[:8]}...")
+            return None
+
+        # Extract value
+        data = result.value if hasattr(result, "value") else result
+
+        # Reconstruct cache entry
+        entry = CacheEntry.from_dict(data)
+
+        # Check expiration
+        if entry.is_expired():
+            logger.debug(
+                f"Cache EXPIRED for xpath hash {cache_key[:8]}... "
+                f"(age={time.time() - entry.timestamp:.1f}s, ttl={entry.ttl}s)"
+            )
+            return None
+
+        logger.debug(
+            f"Cache HIT for xpath hash {cache_key[:8]}... "
+            f"(age={time.time() - entry.timestamp:.1f}s, ttl={entry.ttl}s)"
+        )
+        return entry.xml_data
+
+    except Exception as e:
+        logger.error(f"Failed to retrieve cached config for {hostname}: {e}")
+        return None
+
+
+def invalidate_cache(
+    hostname: str,
+    xpath: Optional[str] = None,
+    store: BaseStore = None,
+) -> int:
+    """Invalidate cached configuration.
+
+    Removes cached entries to ensure fresh data after mutations. Can invalidate
+    a specific xpath or all cached configs for a hostname.
+
+    Args:
+        hostname: Firewall hostname or IP address
+        xpath: Specific XPath to invalidate, or None for all
+        store: BaseStore instance from graph runtime
+
+    Returns:
+        Number of cache entries invalidated
+
+    Example:
+        ```python
+        # Invalidate specific object after update
+        invalidate_cache(
+            "192.168.1.1",
+            "/config/.../address/entry[@name='web-1']",
+            store
+        )
+
+        # Invalidate all cached configs after commit
+        invalidate_cache("192.168.1.1", None, store)
+        ```
+
+    Note:
+        - Called automatically after create/update/delete operations
+        - Ensures consistency between cache and firewall state
+        - If xpath is None, clears all cache entries for hostname
+    """
+    if store is None:
+        logger.warning("Cannot invalidate cache: store is None")
+        return 0
+
+    # Sanitize hostname for namespace
+    sanitized_hostname = _sanitize_namespace_label(hostname)
+    namespace = (NAMESPACE_CONFIG_CACHE, sanitized_hostname)
+
+    try:
+        if xpath is None:
+            # Invalidate all cache entries for this hostname
+            # Search and delete all entries in namespace
+            results = store.search(namespace, limit=1000)
+            count = 0
+            for result in results:
+                key = result.key if hasattr(result, "key") else None
+                if key:
+                    store.delete(namespace, key)
+                    count += 1
+            logger.debug(f"Invalidated {count} cache entries for {hostname}")
+            return count
+        else:
+            # Invalidate specific xpath
+            cache_key = _hash_xpath(xpath)
+            result = store.get(namespace, cache_key)
+            if result:
+                store.delete(namespace, cache_key)
+                logger.debug(f"Invalidated cache for xpath hash {cache_key[:8]}...")
+                return 1
+            return 0
+
+    except Exception as e:
+        logger.error(f"Failed to invalidate cache for {hostname}: {e}")
+        return 0
+
+
+# =============================================================================
+# Firewall Configuration Storage (Long-term memory)
+# =============================================================================
 
 
 def store_firewall_config(

@@ -11,12 +11,14 @@ from typing import Literal
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import SystemMessage
 from langchain_core.messages.base import BaseMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
 
 from src.core.checkpoint_manager import get_checkpointer
+from src.core.client import get_device_context
 from src.core.config import AgentContext, get_settings
 from src.core.memory_store import (
     get_firewall_operation_summary,
@@ -25,6 +27,7 @@ from src.core.memory_store import (
 )
 from src.core.retry_policies import PANOS_RETRY_POLICY
 from src.core.state_schemas import AutonomousState
+from src.core.store_context import set_store
 from src.tools import ALL_TOOLS
 
 logger = logging.getLogger(__name__)
@@ -67,6 +70,32 @@ Use your judgment to complete tasks efficiently while following security best pr
 """
 
 
+async def initialize_device_context(state: AutonomousState) -> AutonomousState:
+    """Initialize device context at graph start.
+
+    Detects device type (Firewall or Panorama) and populates device context
+    in state for context-aware operations.
+
+    Args:
+        state: Current autonomous state
+
+    Returns:
+        Updated state with device_context
+    """
+    # Get device context from client (initializes connection if needed)
+    device_context = await get_device_context()
+
+    if device_context:
+        logger.info(
+            f"Device detected: {device_context['device_type']} "
+            f"(model: {device_context['model']}, version: {device_context['version']})"
+        )
+        return {"device_context": device_context}
+    else:
+        logger.warning("Failed to detect device context - proceeding without device info")
+        return {}  # Return empty dict to avoid changing state
+
+
 async def call_agent(
     state: AutonomousState, *, runtime: Runtime[AgentContext], store: BaseStore
 ) -> AutonomousState:
@@ -83,7 +112,19 @@ async def call_agent(
     Returns:
         Updated state with agent response
     """
+    from src.core.client import get_device_context
+
     settings = get_settings()
+
+    # Initialize device context if not already set
+    device_context = state.get("device_context")
+    if not device_context:
+        device_context = await get_device_context()
+        if device_context:
+            logger.debug(
+                f"Initialized device context: {device_context['device_type'].value} "
+                f"(vsys: {device_context.get('vsys', 'vsys1')})"
+            )
 
     # Retrieve memory context from store
     memory_context = ""
@@ -140,7 +181,11 @@ async def call_agent(
     # Get response (ainvoke for async)
     response = await llm_with_tools.ainvoke(messages)
 
-    return {"messages": [response]}
+    # Return updated state with device context
+    result = {"messages": [response]}
+    if device_context:
+        result["device_context"] = device_context
+    return result
 
 
 def route_after_agent(
@@ -288,20 +333,28 @@ async def store_operations(state: AutonomousState, *, store: BaseStore) -> Auton
     return state
 
 
-def create_autonomous_graph(store: BaseStore | None = None, checkpointer=None) -> StateGraph:
+def create_autonomous_graph(config: RunnableConfig) -> StateGraph:
     """Create autonomous ReAct agent graph.
 
     Args:
-        store: Optional BaseStore instance. If None, uses InMemoryStore.
-        checkpointer: Optional checkpointer instance. If None, uses sync SqliteSaver.
+        config: RunnableConfig from LangGraph Studio/CLI.
+                Can contain 'store' and 'checkpointer' in configurable dict.
 
     Returns:
         Compiled StateGraph with checkpointer and store for autonomous mode
     """
     from langgraph.store.memory import InMemoryStore
 
+    # Extract store and checkpointer from config if provided
+    configurable = config.get("configurable", {})
+    store = configurable.get("store")
+    checkpointer = configurable.get("checkpointer")
+
     if store is None:
         store = InMemoryStore()
+
+    # Set store in context for subgraphs and tools to access
+    set_store(store)
 
     if checkpointer is None:
         checkpointer = get_checkpointer()
@@ -312,12 +365,14 @@ def create_autonomous_graph(store: BaseStore | None = None, checkpointer=None) -
     tool_node = ToolNode(ALL_TOOLS)
 
     # Add nodes
+    workflow.add_node("initialize_device_context", initialize_device_context)
     workflow.add_node("agent", call_agent)
     workflow.add_node("tools", tool_node, retry=PANOS_RETRY_POLICY)
     workflow.add_node("store_operations", store_operations)
 
     # Add edges
-    workflow.add_edge(START, "agent")
+    workflow.add_edge(START, "initialize_device_context")
+    workflow.add_edge("initialize_device_context", "agent")
 
     # Conditional routing after agent
     workflow.add_conditional_edges(

@@ -19,6 +19,13 @@ class JobStatus(str, Enum):
     ACTIVE = "ACT"
 
 
+class DeviceType(str, Enum):
+    """PAN-OS device type."""
+
+    FIREWALL = "FIREWALL"
+    PANORAMA = "PANORAMA"
+
+
 class APIResponse(BaseModel):
     """Response from PAN-OS API call."""
 
@@ -39,6 +46,17 @@ class JobStatusResponse(BaseModel):
     progress: int = Field(description="Progress percentage (0-100)")
     result: Optional[str] = Field(None, description="Job result (if finished)")
     details: Optional[str] = Field(None, description="Error details (if failed)")
+
+
+class DeviceInfo(BaseModel):
+    """PAN-OS device information."""
+
+    hostname: str = Field(description="Device hostname")
+    version: str = Field(description="PAN-OS software version")
+    serial: str = Field(description="Device serial number")
+    model: str = Field(description="Device model")
+    device_type: DeviceType = Field(description="Device type (FIREWALL or PANORAMA)")
+    platform: Optional[str] = Field(None, description="Platform information")
 
 
 class AddressType(str, Enum):

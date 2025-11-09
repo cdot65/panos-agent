@@ -46,11 +46,15 @@ def build_xpath(
     location: str = "vsys1",
     rule_base: Optional[str] = None,
     device_context: Optional["DeviceContext"] = None,
+    template_stack: Optional[str] = None,
 ) -> str:
     """Build XPath for PAN-OS configuration objects.
 
     Supports both firewall and Panorama XPath generation based on device context.
-    For Panorama, generates paths for shared, device-group, or template contexts.
+    For Panorama, generates paths for shared, device-group, template, or template-stack contexts.
+
+    Context selection priority: Template > Device-Group > Shared
+    Template-Stack is a special case that references template entries.
 
     Args:
         object_type: Type of object (address, service, security-policy, etc.)
@@ -58,6 +62,7 @@ def build_xpath(
         location: Virtual system location (default: vsys1) - used for firewall
         rule_base: For policies, the rulebase type (security, nat, etc.)
         device_context: Device context dict with device_type, vsys, device_group, template
+        template_stack: Optional template stack name (for Panorama template-stack context)
 
     Returns:
         XPath string
@@ -78,9 +83,30 @@ def build_xpath(
 
     # Panorama XPath generation
     if device_type == DeviceType.PANORAMA:
-        # Panorama paths depend on context (shared, device-group, template)
-        if device_group:
-            # Device group context
+        # Context selection priority: Template > Device-Group > Shared
+        # Template-Stack is handled separately as it references templates
+
+        if template_stack:
+            # Template-Stack context: /config/devices/entry[@name='localhost.localdomain']/template-stack/entry[@name='{stack}']
+            # Template stacks don't directly contain objects, they reference templates
+            # For object operations, we still use the template context
+            base_path = f"/config/devices/entry[@name='localhost.localdomain']/template-stack/entry[@name='{template_stack}']"
+            # Note: Template stacks reference templates, so object operations typically
+            # need to be done on the underlying templates, not the stack itself
+            # This path is mainly for stack management operations
+            if object_type in ["template-stack"]:
+                if name:
+                    return f"{base_path}/entry[@name='{name}']"
+                return base_path
+            # For other objects, fall through to template or shared context
+
+        if template:
+            # Template context: /config/devices/entry[@name='localhost.localdomain']/template/entry[@name='{tpl}']/config/{object_type}
+            base_path = f"/config/devices/entry[@name='localhost.localdomain']/template/entry[@name='{template}']/config"
+            if vsys and vsys != "shared":
+                base_path = f"{base_path}/vsys/entry[@name='{vsys}']"
+        elif device_group:
+            # Device-Group context: /config/devices/entry[@name='localhost.localdomain']/device-group/entry[@name='{dg}']/{object_type}
             base_device_path = f"/config/devices/entry[@name='localhost.localdomain']/device-group/entry[@name='{device_group}']"
             if vsys and vsys != "shared":
                 # Multi-vsys device group
@@ -88,13 +114,8 @@ def build_xpath(
             else:
                 # Shared device group (no vsys)
                 base_path = base_device_path
-        elif template:
-            # Template context
-            base_path = f"/config/devices/entry[@name='localhost.localdomain']/template/entry[@name='{template}']/config"
-            if vsys and vsys != "shared":
-                base_path = f"{base_path}/vsys/entry[@name='{vsys}']"
         else:
-            # Shared context (default for Panorama)
+            # Shared context (default for Panorama): /config/shared/{object_type}
             base_path = "/config/shared"
 
         # Build object-specific paths
@@ -109,12 +130,26 @@ def build_xpath(
         # Policy rules
         if object_type in ["security-policy", "nat-policy"]:
             policy_type = "security" if object_type == "security-policy" else "nat"
-            if device_group and vsys:
-                # Device group with vsys - policies are in rulebase
-                base = f"{base_path}/rulebase/{policy_type}/rules"
-            else:
-                # Shared or template - policies may be in different location
-                base = f"{base_path}/rulebase/{policy_type}/rules"
+            base = f"{base_path}/rulebase/{policy_type}/rules"
+            if name:
+                return f"{base}/entry[@name='{name}']"
+            return base
+
+        # Panorama-specific object types
+        if object_type == "device-group":
+            base = "/config/devices/entry[@name='localhost.localdomain']/device-group"
+            if name:
+                return f"{base}/entry[@name='{name}']"
+            return base
+
+        if object_type == "template":
+            base = "/config/devices/entry[@name='localhost.localdomain']/template"
+            if name:
+                return f"{base}/entry[@name='{name}']"
+            return base
+
+        if object_type == "template-stack":
+            base = "/config/devices/entry[@name='localhost.localdomain']/template-stack"
             if name:
                 return f"{base}/entry[@name='{name}']"
             return base
@@ -125,7 +160,7 @@ def build_xpath(
                 return f"{base}/entry[@name='{name}']"
             return base
 
-    # Firewall XPath generation (default)
+    # Firewall XPath generation (default) - backward compatible
     base_paths = {
         "address": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{vsys}']/address",
         "address-group": f"/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='{vsys}']/address-group",

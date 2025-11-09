@@ -216,6 +216,10 @@ async def validate_input(state: CRUDState) -> CRUDState:
         "service-group",
         "security-policy",
         "nat-policy",
+        # Panorama-specific types
+        "device-group",
+        "template",
+        "template-stack",
     ]
     if state["object_type"] not in valid_types:
         return {
@@ -501,6 +505,32 @@ def build_object_xml(object_type: str, data: dict[str, Any]) -> etree._Element:
             log_end = etree.SubElement(entry, "log-end")
             log_end.text = "yes"
 
+        if data.get("description"):
+            desc_elem = etree.SubElement(entry, "description")
+            desc_elem.text = data["description"]
+
+    elif object_type == "device-group":
+        # Device group
+        if data.get("description"):
+            desc_elem = etree.SubElement(entry, "description")
+            desc_elem.text = data["description"]
+        # Device assignments are handled separately in Panorama API
+        # For now, just create the basic structure
+
+    elif object_type == "template":
+        # Template
+        if data.get("description"):
+            desc_elem = etree.SubElement(entry, "description")
+            desc_elem.text = data["description"]
+        # Device assignments are handled separately in Panorama API
+
+    elif object_type == "template-stack":
+        # Template stack
+        if data.get("templates"):
+            templates_elem = etree.SubElement(entry, "templates")
+            for template in data["templates"]:
+                member = etree.SubElement(templates_elem, "member")
+                member.text = template
         if data.get("description"):
             desc_elem = etree.SubElement(entry, "description")
             desc_elem.text = data["description"]

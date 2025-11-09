@@ -297,11 +297,12 @@ async def store_operations(state: AutonomousState, *, store: BaseStore) -> Auton
     return state
 
 
-def create_autonomous_graph(store: BaseStore | None = None) -> StateGraph:
+def create_autonomous_graph(store: BaseStore | None = None, checkpointer = None) -> StateGraph:
     """Create autonomous ReAct agent graph.
 
     Args:
         store: Optional BaseStore instance. If None, uses InMemoryStore.
+        checkpointer: Optional checkpointer instance. If None, uses sync SqliteSaver.
 
     Returns:
         Compiled StateGraph with checkpointer and store for autonomous mode
@@ -310,6 +311,9 @@ def create_autonomous_graph(store: BaseStore | None = None) -> StateGraph:
 
     if store is None:
         store = InMemoryStore()
+
+    if checkpointer is None:
+        checkpointer = get_checkpointer()
 
     workflow = StateGraph(AutonomousState, context_schema=AgentContext)
 
@@ -338,6 +342,5 @@ def create_autonomous_graph(store: BaseStore | None = None) -> StateGraph:
     workflow.add_edge("tools", "store_operations")
     workflow.add_edge("store_operations", "agent")
 
-    # Compile with persistent SQLite checkpointer and store for memory
-    checkpointer = get_checkpointer()
+    # Compile with checkpointer and store for memory
     return workflow.compile(checkpointer=checkpointer, store=store)

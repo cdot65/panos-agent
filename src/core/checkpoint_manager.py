@@ -8,6 +8,8 @@ import sqlite3
 from pathlib import Path
 
 from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+import aiosqlite
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +34,7 @@ def ensure_checkpoint_db_exists() -> None:
 
 
 def get_checkpointer() -> SqliteSaver:
-    """Get SQLite checkpointer instance.
+    """Get SQLite checkpointer instance (synchronous).
 
     Creates persistent checkpoint storage in data/checkpoints.db.
     Checkpoints survive application restarts and enable:
@@ -58,4 +60,30 @@ def get_checkpointer() -> SqliteSaver:
     checkpointer = SqliteSaver(conn=conn)
 
     logger.info(f"Initialized persistent checkpointer: {db_path}")
+    return checkpointer
+
+
+async def get_async_checkpointer() -> AsyncSqliteSaver:
+    """Get async SQLite checkpointer instance.
+
+    Creates persistent checkpoint storage in data/checkpoints.db using
+    async I/O for better performance with async graphs.
+
+    Returns:
+        AsyncSqliteSaver instance configured for persistent storage
+
+    Example:
+        >>> checkpointer = await get_async_checkpointer()
+        >>> graph = workflow.compile(checkpointer=checkpointer)
+    """
+    ensure_checkpoint_db_exists()
+    db_path = get_checkpoint_db_path()
+
+    # Create async SQLite connection
+    conn = await aiosqlite.connect(str(db_path))
+
+    # Create AsyncSqliteSaver instance with the connection
+    checkpointer = AsyncSqliteSaver(conn=conn)
+
+    logger.info(f"Initialized async persistent checkpointer: {db_path}")
     return checkpointer

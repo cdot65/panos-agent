@@ -33,7 +33,7 @@ pytestmark = pytest.mark.skipif(
 class TestLangSmithAnonymization:
     """Test that sensitive data is anonymized in LangSmith traces."""
 
-    @patch("src.core.client.get_firewall_client")
+    @patch("src.core.client.get_panos_client")
     def test_api_keys_anonymized_in_traces(self, mock_get_client, autonomous_graph):
         """Test that PAN-OS API keys are anonymized in traces.
 
@@ -85,7 +85,7 @@ class TestLangSmithAnonymization:
         # Return test run ID for manual lookup
         return test_run_id
 
-    @patch("src.core.client.get_firewall_client")
+    @patch("src.core.client.get_panos_client")
     def test_anthropic_api_key_anonymized(self, mock_get_client, autonomous_graph):
         """Test that Anthropic API keys are anonymized in traces."""
         # Setup mock
@@ -120,7 +120,7 @@ class TestLangSmithAnonymization:
 
         return test_run_id
 
-    @patch("src.core.client.get_firewall_client")
+    @patch("src.core.client.get_panos_client")
     def test_xml_passwords_anonymized(self, mock_get_client, autonomous_graph):
         """Test that XML password elements are anonymized."""
         mock_fw = Mock()
@@ -154,7 +154,7 @@ class TestLangSmithAnonymization:
 
         return test_run_id
 
-    @patch("src.core.client.get_firewall_client")
+    @patch("src.core.client.get_panos_client")
     def test_multiple_patterns_in_single_trace(self, mock_get_client, autonomous_graph):
         """Test that multiple sensitive patterns are all anonymized."""
         mock_fw = Mock()

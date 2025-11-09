@@ -12,16 +12,11 @@ from langchain_core.messages import HumanMessage
 class TestDeterministicGraphExecution:
     """Test deterministic graph end-to-end execution."""
 
-    @patch("src.core.client.get_firewall_client")
-    def test_simple_workflow_execution(
-        self, mock_get_client, deterministic_graph, test_thread_id, sample_workflow
+    @pytest.mark.asyncio
+    async def test_simple_workflow_execution(
+        self, deterministic_graph, test_thread_id, sample_workflow
     ):
         """Test simple 2-step workflow executes successfully."""
-        # Setup mock
-        mock_fw = Mock()
-        mock_fw.hostname = "192.168.1.1"
-        mock_get_client.return_value = mock_fw
-
         # Mock successful tool execution
         with patch("src.tools.orchestration.crud_operations.crud_operation") as mock_crud:
             mock_crud.invoke.side_effect = [
@@ -30,7 +25,7 @@ class TestDeterministicGraphExecution:
             ]
 
             # Execute workflow
-            result = deterministic_graph.invoke(
+            result = await deterministic_graph.ainvoke(
                 {
                     "messages": [HumanMessage(content="workflow: test_workflow")],
                     "workflow_name": "test_workflow",
@@ -50,15 +45,11 @@ class TestDeterministicGraphExecution:
         # Both steps should be successful
         assert all(output.get("status") == "success" for output in step_results)
 
-    @patch("src.core.client.get_firewall_client")
-    def test_workflow_with_error_handling(
-        self, mock_get_client, deterministic_graph, test_thread_id, sample_workflow
+    @pytest.mark.asyncio
+    async def test_workflow_with_error_handling(
+        self, deterministic_graph, test_thread_id, sample_workflow
     ):
         """Test workflow handles step failure gracefully."""
-        # Setup mock
-        mock_fw = Mock()
-        mock_get_client.return_value = mock_fw
-
         # Mock first step success, second step failure
         with patch("src.tools.orchestration.crud_operations.crud_operation") as mock_crud:
             mock_crud.invoke.side_effect = [
@@ -67,7 +58,7 @@ class TestDeterministicGraphExecution:
             ]
 
             # Execute workflow
-            result = deterministic_graph.invoke(
+            result = await deterministic_graph.ainvoke(
                 {
                     "messages": [HumanMessage(content="workflow: test_workflow")],
                     "workflow_name": "test_workflow",
@@ -86,20 +77,16 @@ class TestDeterministicGraphExecution:
         assert step_results[1].get("status") == "error"
         assert "not found" in step_results[1].get("error", "").lower()
 
-    @patch("src.core.client.get_firewall_client")
-    def test_workflow_state_management(
-        self, mock_get_client, deterministic_graph, test_thread_id, sample_workflow
+    @pytest.mark.asyncio
+    async def test_workflow_state_management(
+        self, deterministic_graph, test_thread_id, sample_workflow
     ):
         """Test workflow state updates correctly."""
-        # Setup mock
-        mock_fw = Mock()
-        mock_get_client.return_value = mock_fw
-
         with patch("src.tools.orchestration.crud_operations.crud_operation") as mock_crud:
             mock_crud.invoke.return_value = "✅ Success"
 
             # Execute workflow
-            result = deterministic_graph.invoke(
+            result = await deterministic_graph.ainvoke(
                 {
                     "messages": [HumanMessage(content="workflow: test_workflow")],
                     "workflow_name": "test_workflow",
@@ -119,17 +106,13 @@ class TestDeterministicGraphExecution:
         assert "step_results" in result
         assert len(result["step_results"]) == 2
 
-    @patch("src.core.client.get_firewall_client")
-    def test_empty_workflow_handling(
-        self, mock_get_client, deterministic_graph, test_thread_id
+    @pytest.mark.asyncio
+    async def test_empty_workflow_handling(
+        self, deterministic_graph, test_thread_id
     ):
         """Test handling of workflow with no steps."""
-        # Setup mock
-        mock_fw = Mock()
-        mock_get_client.return_value = mock_fw
-
         # Execute workflow with no steps
-        result = deterministic_graph.invoke(
+        result = await deterministic_graph.ainvoke(
             {
                 "messages": [HumanMessage(content="workflow: empty_workflow")],
                 "workflow_name": "empty_workflow",
@@ -149,20 +132,16 @@ class TestDeterministicGraphExecution:
 class TestDeterministicGraphCheckpointing:
     """Test checkpoint and resume functionality for workflows."""
 
-    @patch("src.core.client.get_firewall_client")
-    def test_workflow_checkpointed(
-        self, mock_get_client, deterministic_graph, test_thread_id, sample_workflow
+    @pytest.mark.asyncio
+    async def test_workflow_checkpointed(
+        self, deterministic_graph, test_thread_id, sample_workflow
     ):
         """Test workflow state is checkpointed."""
-        # Setup mock
-        mock_fw = Mock()
-        mock_get_client.return_value = mock_fw
-
         with patch("src.tools.orchestration.crud_operations.crud_operation") as mock_crud:
             mock_crud.invoke.return_value = "✅ Success"
 
             # Execute workflow
-            deterministic_graph.invoke(
+            await deterministic_graph.ainvoke(
                 {
                     "messages": [HumanMessage(content="workflow: test_workflow")],
                     "workflow_name": "test_workflow",
@@ -181,15 +160,11 @@ class TestDeterministicGraphCheckpointing:
         assert "workflow_steps" in state.values
         assert "step_results" in state.values
 
-    @patch("src.core.client.get_firewall_client")
-    def test_resume_workflow_after_partial_execution(
-        self, mock_get_client, deterministic_graph, test_thread_id
+    @pytest.mark.asyncio
+    async def test_resume_workflow_after_partial_execution(
+        self, deterministic_graph, test_thread_id
     ):
         """Test resuming workflow after partial execution."""
-        # Setup mock
-        mock_fw = Mock()
-        mock_get_client.return_value = mock_fw
-
         # Create 3-step workflow
         three_step_workflow = {
             "name": "multi_step_test",
@@ -219,7 +194,7 @@ class TestDeterministicGraphCheckpointing:
             mock_crud.invoke.return_value = "✅ Success"
 
             # Execute workflow
-            result = deterministic_graph.invoke(
+            result = await deterministic_graph.ainvoke(
                 {
                     "messages": [HumanMessage(content="workflow: multi_step_test")],
                     "workflow_name": "multi_step_test",

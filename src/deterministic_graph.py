@@ -217,11 +217,12 @@ def route_after_load(state: DeterministicState) -> Literal["execute_workflow", "
     return "execute_workflow"
 
 
-def create_deterministic_graph(store: BaseStore | None = None) -> StateGraph:
+def create_deterministic_graph(store: BaseStore | None = None, checkpointer = None) -> StateGraph:
     """Create deterministic workflow execution graph.
 
     Args:
         store: Optional BaseStore instance. If None, uses InMemoryStore.
+        checkpointer: Optional checkpointer instance. If None, uses sync SqliteSaver.
 
     Returns:
         Compiled StateGraph with checkpointer and store for deterministic mode
@@ -230,6 +231,9 @@ def create_deterministic_graph(store: BaseStore | None = None) -> StateGraph:
 
     if store is None:
         store = InMemoryStore()
+
+    if checkpointer is None:
+        checkpointer = get_checkpointer()
 
     workflow = StateGraph(DeterministicState)
 
@@ -253,6 +257,5 @@ def create_deterministic_graph(store: BaseStore | None = None) -> StateGraph:
     # End after execution
     workflow.add_edge("execute_workflow", END)
 
-    # Compile with persistent SQLite checkpointer and store for memory
-    checkpointer = get_checkpointer()
+    # Compile with checkpointer and store for memory
     return workflow.compile(checkpointer=checkpointer, store=store)

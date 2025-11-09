@@ -5,6 +5,22 @@ from langchain_core.messages import AIMessage, HumanMessage
 from unittest.mock import Mock, MagicMock
 
 
+@pytest.fixture(autouse=True)
+def mock_env_vars(monkeypatch):
+    """Auto-mock environment variables for all unit tests.
+    
+    Sets required PAN-OS and API credentials to prevent validation errors.
+    """
+    monkeypatch.setenv("PANOS_HOSTNAME", "192.168.1.1")
+    monkeypatch.setenv("PANOS_USERNAME", "admin")
+    monkeypatch.setenv("PANOS_PASSWORD", "admin")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    
+    # Clear settings cache to ensure new environment variables are picked up
+    import src.core.config
+    src.core.config._settings = None
+
+
 @pytest.fixture
 def mock_llm():
     """Mock ChatAnthropic LLM for testing (async-aware)."""

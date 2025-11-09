@@ -6,10 +6,13 @@ More predictable than autonomous mode, similar to Ansible playbooks.
 
 import logging
 import uuid
+from datetime import datetime
 from typing import Literal
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.store.base import BaseStore
 from src.core.checkpoint_manager import get_checkpointer
+from src.core.memory_store import store_workflow_execution
 from src.core.state_schemas import DeterministicState
 from src.core.subgraphs.deterministic import create_deterministic_workflow_subgraph
 
@@ -81,11 +84,14 @@ def load_workflow_definition(state: DeterministicState) -> DeterministicState:
     }
 
 
-def execute_workflow(state: DeterministicState) -> DeterministicState:
+def execute_workflow(state: DeterministicState, *, store: BaseStore) -> DeterministicState:
     """Execute workflow using deterministic workflow subgraph.
+
+    Stores workflow execution history in memory after completion.
 
     Args:
         state: Current deterministic state
+        store: BaseStore instance for memory storage
 
     Returns:
         Updated state with workflow execution results
@@ -105,6 +111,9 @@ def execute_workflow(state: DeterministicState) -> DeterministicState:
         else user_input.strip()
     )
 
+    execution_id = str(uuid.uuid4())
+    started_at = datetime.utcnow().isoformat() + "Z"
+
     # Invoke workflow subgraph
     try:
         result = workflow_subgraph.invoke(
@@ -120,16 +129,71 @@ def execute_workflow(state: DeterministicState) -> DeterministicState:
             config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
 
+        completed_at = datetime.utcnow().isoformat() + "Z"
+        step_outputs = result.get("step_outputs", [])
+        overall_result = result.get("overall_result", {})
+
+        # Determine status
+        status = "success"
+        if state.get("error_occurred"):
+            status = "failed"
+        elif overall_result and overall_result.get("status") == "partial":
+            status = "partial"
+
+        # Store workflow execution history
+        try:
+            store_workflow_execution(
+                workflow_name=workflow_name,
+                execution_data={
+                    "workflow_name": workflow_name,
+                    "execution_id": execution_id,
+                    "started_at": started_at,
+                    "completed_at": completed_at,
+                    "status": status,
+                    "steps_executed": len(step_outputs),
+                    "steps_total": len(state.get("workflow_steps", [])),
+                    "results": step_outputs,
+                    "metadata": {
+                        "thread_id": str(uuid.uuid4()),
+                    },
+                },
+                store=store,
+            )
+            logger.debug(f"Stored workflow execution history: {workflow_name}/{execution_id}")
+        except Exception as e:
+            logger.warning(f"Failed to store workflow execution history: {e}")
+
         # Update state with results
         return {
             **state,
-            "step_results": result.get("step_outputs", []),
+            "step_results": step_outputs,
             "workflow_complete": True,
             "messages": state["messages"] + [{"role": "assistant", "content": result["message"]}],
         }
 
     except Exception as e:
         logger.error(f"Workflow execution failed: {e}")
+        # Store failed execution
+        try:
+            store_workflow_execution(
+                workflow_name=workflow_name,
+                execution_data={
+                    "workflow_name": workflow_name,
+                    "execution_id": execution_id,
+                    "started_at": started_at,
+                    "completed_at": datetime.utcnow().isoformat() + "Z",
+                    "status": "failed",
+                    "steps_executed": 0,
+                    "steps_total": len(state.get("workflow_steps", [])),
+                    "results": [],
+                    "error": str(e),
+                    "metadata": {},
+                },
+                store=store,
+            )
+        except Exception as store_error:
+            logger.warning(f"Failed to store failed workflow execution: {store_error}")
+
         return {
             **state,
             "error_occurred": True,
@@ -153,12 +217,20 @@ def route_after_load(state: DeterministicState) -> Literal["execute_workflow", "
     return "execute_workflow"
 
 
-def create_deterministic_graph() -> StateGraph:
+def create_deterministic_graph(store: BaseStore | None = None) -> StateGraph:
     """Create deterministic workflow execution graph.
 
+    Args:
+        store: Optional BaseStore instance. If None, uses InMemoryStore.
+
     Returns:
-        Compiled StateGraph with checkpointer for deterministic mode
+        Compiled StateGraph with checkpointer and store for deterministic mode
     """
+    from langgraph.store.memory import InMemoryStore
+
+    if store is None:
+        store = InMemoryStore()
+
     workflow = StateGraph(DeterministicState)
 
     # Add nodes
@@ -181,6 +253,6 @@ def create_deterministic_graph() -> StateGraph:
     # End after execution
     workflow.add_edge("execute_workflow", END)
 
-    # Compile with persistent SQLite checkpointer
+    # Compile with persistent SQLite checkpointer and store for memory
     checkpointer = get_checkpointer()
-    return workflow.compile(checkpointer=checkpointer)
+    return workflow.compile(checkpointer=checkpointer, store=store)

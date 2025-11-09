@@ -15,7 +15,9 @@ class TestAutonomousGraphExecution:
 
     @pytest.mark.asyncio
     @patch("src.autonomous_graph.ChatAnthropic")
-    async def test_simple_query_no_tools(self, mock_chat_anthropic, autonomous_graph, test_thread_id):
+    async def test_simple_query_no_tools(
+        self, mock_chat_anthropic, autonomous_graph, test_thread_id
+    ):
         """Test simple conversational query without tool calls."""
         # Mock LLM response
         mock_llm = AsyncMock()
@@ -50,16 +52,18 @@ class TestAutonomousGraphExecution:
         """Test query that triggers single tool execution."""
         # Mock tool response (async)
         mock_address_list.ainvoke = AsyncMock(return_value="✅ Found 5 address objects")
-        
+
         # Mock LLM responses: first call returns tool call, second returns final response
         mock_llm = AsyncMock()
-        mock_llm.ainvoke = AsyncMock(side_effect=[
-            AIMessage(
-                content="",
-                tool_calls=[{"name": "address_list", "args": {}, "id": "call_1"}],
-            ),
-            AIMessage(content="I found 5 address objects on the firewall."),
-        ])
+        mock_llm.ainvoke = AsyncMock(
+            side_effect=[
+                AIMessage(
+                    content="",
+                    tool_calls=[{"name": "address_list", "args": {}, "id": "call_1"}],
+                ),
+                AIMessage(content="I found 5 address objects on the firewall."),
+            ]
+        )
         mock_chat_anthropic.return_value.bind_tools.return_value = mock_llm
 
         # Execute graph
@@ -85,16 +89,20 @@ class TestAutonomousGraphExecution:
 
     @pytest.mark.asyncio
     @patch("src.autonomous_graph.ChatAnthropic")
-    async def test_conversation_continuity(self, mock_chat_anthropic, autonomous_graph, test_thread_id):
+    async def test_conversation_continuity(
+        self, mock_chat_anthropic, autonomous_graph, test_thread_id
+    ):
         """Test that conversation history is maintained across invocations."""
         # Mock LLM responses
         mock_llm = AsyncMock()
-        mock_llm.ainvoke = AsyncMock(side_effect=[
-            AIMessage(content="Nice to meet you, Alice!"),
-            AIMessage(content="Your name is Alice."),
-        ])
+        mock_llm.ainvoke = AsyncMock(
+            side_effect=[
+                AIMessage(content="Nice to meet you, Alice!"),
+                AIMessage(content="Your name is Alice."),
+            ]
+        )
         mock_chat_anthropic.return_value.bind_tools.return_value = mock_llm
-        
+
         # First message
         result1 = await autonomous_graph.ainvoke(
             {"messages": [HumanMessage(content="My name is Alice")]},
@@ -125,13 +133,13 @@ class TestAutonomousGraphExecution:
         # Mock LLM responses - need separate mocks for each invocation
         mock_llm_1 = AsyncMock()
         mock_llm_1.ainvoke = AsyncMock(return_value=AIMessage(content="Blue is a great color!"))
-        
+
         mock_llm_2 = AsyncMock()
         mock_llm_2.ainvoke = AsyncMock(return_value=AIMessage(content="Hello! How can I help you?"))
-        
+
         # Set up side_effect to return different mocks for each call
         mock_chat_anthropic.return_value.bind_tools.side_effect = [mock_llm_1, mock_llm_2]
-        
+
         # First conversation with unique thread ID (use UUID to ensure isolation)
         thread_id_1 = f"test-thread-{uuid.uuid4()}"
         result1 = await autonomous_graph.ainvoke(
@@ -153,7 +161,9 @@ class TestAutonomousGraphExecution:
 
         # Should only have one human message (the greeting) - check content matches
         hello_messages = [msg for msg in human_messages if msg.content == "Hello"]
-        assert len(hello_messages) == 1, f"Expected 1 'Hello' message, found {len(hello_messages)}. All human messages: {[m.content for m in human_messages]}"
+        assert (
+            len(hello_messages) == 1
+        ), f"Expected 1 'Hello' message, found {len(hello_messages)}. All human messages: {[m.content for m in human_messages]}"
         assert hello_messages[0].content == "Hello"
 
 
@@ -162,13 +172,15 @@ class TestAutonomousGraphCheckpointing:
 
     @pytest.mark.asyncio
     @patch("src.autonomous_graph.ChatAnthropic")
-    async def test_checkpoint_after_execution(self, mock_chat_anthropic, autonomous_graph, test_thread_id):
+    async def test_checkpoint_after_execution(
+        self, mock_chat_anthropic, autonomous_graph, test_thread_id
+    ):
         """Test that state is checkpointed after execution."""
         # Mock LLM response
         mock_llm = AsyncMock()
         mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="Test response"))
         mock_chat_anthropic.return_value.bind_tools.return_value = mock_llm
-        
+
         # Execute graph
         await autonomous_graph.ainvoke(
             {"messages": [HumanMessage(content="Test message")]},
@@ -186,16 +198,20 @@ class TestAutonomousGraphCheckpointing:
 
     @pytest.mark.asyncio
     @patch("src.autonomous_graph.ChatAnthropic")
-    async def test_resume_from_checkpoint(self, mock_chat_anthropic, autonomous_graph, test_thread_id):
+    async def test_resume_from_checkpoint(
+        self, mock_chat_anthropic, autonomous_graph, test_thread_id
+    ):
         """Test resuming conversation from checkpoint."""
         # Mock LLM responses
         mock_llm = AsyncMock()
-        mock_llm.ainvoke = AsyncMock(side_effect=[
-            AIMessage(content="I'll remember the number 42."),
-            AIMessage(content="You told me the number 42."),
-        ])
+        mock_llm.ainvoke = AsyncMock(
+            side_effect=[
+                AIMessage(content="I'll remember the number 42."),
+                AIMessage(content="You told me the number 42."),
+            ]
+        )
         mock_chat_anthropic.return_value.bind_tools.return_value = mock_llm
-        
+
         # First execution
         result1 = await autonomous_graph.ainvoke(
             {"messages": [HumanMessage(content="Remember the number 42")]},

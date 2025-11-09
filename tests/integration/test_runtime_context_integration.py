@@ -17,7 +17,9 @@ class TestRuntimeContextIntegration:
     @patch("src.autonomous_graph.ChatAnthropic")
     @patch("src.autonomous_graph.get_settings")
     @patch("src.autonomous_graph.get_firewall_operation_summary")
-    async def test_graph_with_haiku_model(self, mock_get_summary, mock_settings, mock_chat_anthropic):
+    async def test_graph_with_haiku_model(
+        self, mock_get_summary, mock_settings, mock_chat_anthropic
+    ):
         """Test full graph execution with Haiku model via runtime context."""
         # Setup mocks
         mock_settings.return_value.anthropic_api_key = "test-key"
@@ -61,7 +63,9 @@ class TestRuntimeContextIntegration:
     @patch("src.autonomous_graph.ChatAnthropic")
     @patch("src.autonomous_graph.get_settings")
     @patch("src.autonomous_graph.get_firewall_operation_summary")
-    async def test_graph_with_opus_model(self, mock_get_summary, mock_settings, mock_chat_anthropic):
+    async def test_graph_with_opus_model(
+        self, mock_get_summary, mock_settings, mock_chat_anthropic
+    ):
         """Test full graph execution with Opus model via runtime context."""
         # Setup mocks
         mock_settings.return_value.anthropic_api_key = "test-key"
@@ -159,17 +163,21 @@ class TestRuntimeContextIntegration:
         mock_llm = AsyncMock()
         # First call: return tool call
         # Second call: return final response
-        mock_llm.ainvoke = AsyncMock(side_effect=[
-            AIMessage(
-                content="",
-                tool_calls=[{"name": "address_list", "args": {}, "id": "call_1"}],
-            ),
-            AIMessage(content="Operation complete"),
-        ])
+        mock_llm.ainvoke = AsyncMock(
+            side_effect=[
+                AIMessage(
+                    content="",
+                    tool_calls=[{"name": "address_list", "args": {}, "id": "call_1"}],
+                ),
+                AIMessage(content="Operation complete"),
+            ]
+        )
         mock_chat_anthropic.return_value.bind_tools.return_value = mock_llm
 
         # Mock tool execution by patching the underlying async function
-        with patch("src.tools.address_objects.address_list", new_callable=AsyncMock, return_value="[]"):
+        with patch(
+            "src.tools.address_objects.address_list", new_callable=AsyncMock, return_value="[]"
+        ):
             # Create graph with async checkpointer
             checkpointer = await get_async_checkpointer()
             graph = create_autonomous_graph(checkpointer=checkpointer)
@@ -205,7 +213,9 @@ class TestRuntimeContextDefaults:
     @patch("src.autonomous_graph.ChatAnthropic")
     @patch("src.autonomous_graph.get_settings")
     @patch("src.autonomous_graph.get_firewall_operation_summary")
-    async def test_graph_with_default_context(self, mock_get_summary, mock_settings, mock_chat_anthropic):
+    async def test_graph_with_default_context(
+        self, mock_get_summary, mock_settings, mock_chat_anthropic
+    ):
         """Test graph execution without explicit runtime context (uses defaults)."""
         # Setup mocks
         mock_settings.return_value.anthropic_api_key = "test-key"

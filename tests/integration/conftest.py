@@ -81,7 +81,7 @@ async def autonomous_graph(mock_panos_client):
     """
     # Patch get_panos_client to return the mock client (using AsyncMock)
     mock_get_client = AsyncMock(return_value=mock_panos_client)
-    
+
     with patch("src.core.client.get_panos_client", mock_get_client):
         from src.autonomous_graph import create_autonomous_graph
         from src.core.checkpoint_manager import get_async_checkpointer
@@ -105,7 +105,7 @@ async def deterministic_graph(mock_panos_client):
     """
     # Patch get_panos_client to return the mock client (using AsyncMock)
     mock_get_client = AsyncMock(return_value=mock_panos_client)
-    
+
     with patch("src.core.client.get_panos_client", mock_get_client):
         from src.core.checkpoint_manager import get_async_checkpointer
         from src.deterministic_graph import create_deterministic_graph

@@ -19,17 +19,21 @@ class TestDeterministicGraphExecution:
         """Test simple 2-step workflow executes successfully."""
         # Mock successful tool execution (async)
         with patch("src.tools.orchestration.crud_operations.crud_operation") as mock_crud:
-            mock_crud.ainvoke = AsyncMock(side_effect=[
-                "✅ Created address: test-server",
-                "✅ Retrieved address: test-server",
-            ])
+            mock_crud.ainvoke = AsyncMock(
+                side_effect=[
+                    "✅ Created address: test-server",
+                    "✅ Retrieved address: test-server",
+                ]
+            )
 
             # Execute workflow - pass workflow_steps directly since we're bypassing WORKFLOWS lookup
             result = await deterministic_graph.ainvoke(
                 {
                     "messages": [HumanMessage(content="workflow: test_workflow")],
                     "workflow_name": "test_workflow",
-                    "workflow_steps": sample_workflow["steps"],  # Use workflow_steps instead of steps
+                    "workflow_steps": sample_workflow[
+                        "steps"
+                    ],  # Use workflow_steps instead of steps
                 },
                 config={"configurable": {"thread_id": test_thread_id}},
             )
@@ -52,17 +56,21 @@ class TestDeterministicGraphExecution:
         """Test workflow handles step failure gracefully."""
         # Mock first step success, second step failure (async)
         with patch("src.tools.orchestration.crud_operations.crud_operation") as mock_crud:
-            mock_crud.ainvoke = AsyncMock(side_effect=[
-                "✅ Created address: test-server",
-                "❌ Error: Object not found",
-            ])
+            mock_crud.ainvoke = AsyncMock(
+                side_effect=[
+                    "✅ Created address: test-server",
+                    "❌ Error: Object not found",
+                ]
+            )
 
             # Execute workflow - pass workflow_steps directly
             result = await deterministic_graph.ainvoke(
                 {
                     "messages": [HumanMessage(content="workflow: test_workflow")],
                     "workflow_name": "test_workflow",
-                    "workflow_steps": sample_workflow["steps"],  # Use workflow_steps instead of steps
+                    "workflow_steps": sample_workflow[
+                        "steps"
+                    ],  # Use workflow_steps instead of steps
                 },
                 config={"configurable": {"thread_id": test_thread_id}},
             )
@@ -90,7 +98,9 @@ class TestDeterministicGraphExecution:
                 {
                     "messages": [HumanMessage(content="workflow: test_workflow")],
                     "workflow_name": "test_workflow",
-                    "workflow_steps": sample_workflow["steps"],  # Use workflow_steps instead of steps
+                    "workflow_steps": sample_workflow[
+                        "steps"
+                    ],  # Use workflow_steps instead of steps
                 },
                 config={"configurable": {"thread_id": test_thread_id}},
             )
@@ -196,7 +206,9 @@ class TestDeterministicGraphCheckpointing:
                 {
                     "messages": [HumanMessage(content="workflow: multi_step_test")],
                     "workflow_name": "multi_step_test",
-                    "workflow_steps": three_step_workflow["steps"],  # Use workflow_steps instead of steps
+                    "workflow_steps": three_step_workflow[
+                        "steps"
+                    ],  # Use workflow_steps instead of steps
                 },
                 config={"configurable": {"thread_id": test_thread_id}},
             )

@@ -347,6 +347,88 @@ panos-agent checkpoints prune --days 30 --force
 **Benefits:**
 
 - **Persistence**: Conversations survive application restarts
+- **Recovery**: Resume from any checkpoint after failures
+- **Time-Travel**: View and fork from historical states
+- **Auditing**: Complete history of all operations
+
+---
+
+### Memory & Context
+
+The agent uses LangGraph's Store API to maintain **long-term memory** across sessions. Unlike checkpoints (which store conversation state), memory stores operational context and history.
+
+#### What Data is Remembered
+
+**Firewall Configuration State:**
+
+- Object counts per config type (address objects, services, policies, etc.)
+- Recent operations (last 10 create/update/delete operations)
+- Last updated timestamps
+
+**Workflow Execution History:**
+
+- Execution metadata (started_at, completed_at, status)
+- Steps executed and results
+- Success/failure status for auditing
+
+#### How Memory Works
+
+**Autonomous Mode:**
+
+- Before each agent call, retrieves firewall operation summary
+- Adds context to system prompt: "Previously created 5 address objects, updated 2 policies"
+- After tool execution, stores operation results in memory
+- Enables context-aware responses across sessions
+
+**Deterministic Mode:**
+
+- Stores workflow execution history after completion
+- Tracks success/failure status and step results
+- Enables workflow execution auditing and analysis
+
+#### Memory Persistence
+
+**Current Implementation:** `InMemoryStore`
+
+- Data stored in RAM
+- Lost on process restart
+- Suitable for development and single-session use
+
+**Future Upgrade:** Persistent Store (PostgreSQL, Redis, etc.)
+
+- Data survives restarts
+- Suitable for production multi-user deployments
+- Requires external database
+
+#### Example: Memory in Action
+
+```bash
+# First session - create address objects
+panos-agent run -p "Create address objects web-1, web-2, web-3" -m autonomous
+
+# Second session (same firewall) - agent remembers previous operations
+panos-agent run -p "List all address objects" -m autonomous
+# Agent response includes: "I see you previously created 3 address objects (web-1, web-2, web-3)"
+```
+
+#### Memory Schema
+
+For detailed information about memory namespaces, keys, and data structures, see:
+
+- `docs/MEMORY_SCHEMA.md` - Complete memory schema documentation
+
+**Key Features:**
+
+- **Namespace Isolation**: Each firewall has separate namespace
+- **Config Type Tracking**: Separate tracking per object type
+- **Operation History**: Last 10 operations per config type
+- **Workflow Auditing**: Complete execution history per workflow
+
+---
+
+**Benefits:**
+
+- **Persistence**: Conversations survive application restarts
 - **Resume**: Continue from failures using same thread_id
 - **Time-travel**: Inspect historical checkpoint states
 - **Cleanup**: Manage disk space with prune commands

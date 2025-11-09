@@ -88,7 +88,7 @@ async def execute_step(
         langgraph_step = state["current_step"] * 4
 
     recursion_limit = config_dict.get("recursion_limit", 25)
-    threshold = int(recursion_limit * 0.8)  # 80% threshold
+    threshold = int(recursion_limit * 0.6)  # 60% threshold (leaves room for cleanup nodes)
 
     # Check if approaching limit
     if langgraph_step >= threshold:
@@ -117,10 +117,10 @@ async def execute_step(
     if langgraph_step == int(recursion_limit * 0.5):
         logger.info(f"Workflow at 50% of recursion limit ({langgraph_step}/{recursion_limit})")
 
-    # Milestone logging at 80% threshold
+    # Milestone logging near threshold
     if langgraph_step == threshold - 1:
         logger.warning(
-            f"Workflow at 80% of recursion limit ({langgraph_step}/{recursion_limit}) - "
+            f"Workflow at 60% of recursion limit ({langgraph_step}/{recursion_limit}) - "
             f"approaching maximum"
         )
 

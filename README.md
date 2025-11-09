@@ -111,6 +111,101 @@ panos-agent version
 
 ```
 
+## Model Selection
+
+The agent supports runtime model and temperature selection, allowing you to choose the right balance of speed, cost, and capability for your use case.
+
+### Choosing a Model
+
+Use the `--model` flag to select which Claude model to use:
+
+```bash
+# Default: Fast Haiku model (balanced performance and cost)
+panos-agent run -p "Create address object web-server at 10.1.1.100"
+
+# Haiku: Fast and cheap (best for simple operations)
+panos-agent run -p "List address objects" --model haiku
+
+# Sonnet: More powerful (best for complex multi-step tasks)
+panos-agent run -p "Create address and add to security policy" --model sonnet
+
+# Full model name also supported
+panos-agent run -p "List objects" --model claude-3-5-sonnet-20241022
+```
+
+### Model Comparison
+
+| Model | Alias | Speed | Cost | Best For |
+|-------|-------|-------|------|----------|
+| **Claude Haiku 4.5** | `haiku` | ⚡⚡⚡⚡⚡ Fastest | 💵 Cheapest | **Default**, simple CRUD, list operations, batch processing |
+| **Claude Sonnet 3.5** | `sonnet` | ⚡⚡⚡⚡ Fast | 💵💵💵 Moderate | Complex multi-step tasks, policy creation, analysis |
+| **Claude Opus 3** | `opus` | ⚡⚡⚡ Moderate | 💵💵💵💵 Highest | Most powerful, deep analysis, recommendations |
+
+**Currently Available Models:**
+- `claude-haiku-4-5` (Haiku, latest - **default**)
+- `claude-3-5-sonnet-20241022` (Sonnet 3.5)
+- `claude-3-opus-20240229` (Opus 3)
+
+### When to Use Each Model
+
+**Use Haiku (default) for:**
+- Simple list operations (`List all address objects`)
+- Single CRUD operations (`Create address X`, `Delete service Y`)
+- Batch operations with known patterns
+- Development/testing (fast iteration)
+- Cost-sensitive production workloads
+- Most automation tasks (recommended default)
+
+**Use Sonnet for:**
+- Multi-step operations
+- Policy creation with multiple objects
+- Natural language queries requiring reasoning
+- Complex workflows
+- When quality matters more than speed
+
+**Use Opus for:**
+- Deep security analysis
+- Policy recommendations and auditing
+- Multi-constraint decision making
+- Novel/ambiguous requests
+- Advanced troubleshooting
+
+### Temperature Control
+
+The `--temperature` flag controls randomness in LLM responses (0.0 = deterministic, 1.0 = creative):
+
+```bash
+# Deterministic (default, recommended for most automation)
+panos-agent run -p "Create address object server-1 at 10.1.1.1" --temperature 0.0
+
+# More creative (useful for naming, descriptions, recommendations)
+panos-agent run -p "Suggest descriptive names for these servers" --temperature 0.7
+
+# Maximum creativity (rarely needed)
+panos-agent run -p "Brainstorm security architectures" --temperature 1.0
+```
+
+**Recommendations:**
+- **0.0 (default)**: Use for all CRUD operations, deterministic workflows
+- **0.3-0.5**: Use for recommendations with some variety
+- **0.7-1.0**: Use for creative tasks (naming, brainstorming)
+
+### Cost Optimization Examples
+
+```bash
+# Development: Use Haiku for fast, cheap iteration (default)
+panos-agent run -p "List objects"
+
+# Production batch: Haiku for high-volume simple operations
+panos-agent run -p "List all address objects"
+
+# Complex tasks: Sonnet when you need better reasoning
+panos-agent run -p "Setup web server security rules" --model sonnet
+
+# Critical analysis: Opus when accuracy matters most
+panos-agent run -p "Audit security policies for compliance" --model opus
+```
+
 ### Streaming Mode (Default)
 
 By default, the agent provides **real-time progress feedback** as it executes:
@@ -797,6 +892,131 @@ Each thread maintains a full checkpoint history. While CLI commands for viewing 
 - **Inspect state** - See exact state at any step in the workflow
 
 For detailed troubleshooting scenarios and recovery strategies, see **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)**.
+
+## Testing Commands
+
+### Quick Functionality Tests
+
+Test all major features with these commands:
+
+```bash
+# Test basic autonomous mode (list operation)
+panos-agent run -p "List all address objects"
+
+# Test with different models
+panos-agent run -p "List address objects" --model haiku
+panos-agent run -p "List services" --model sonnet
+
+# Test temperature control
+panos-agent run -p "Suggest creative names for web servers" --temperature 0.7
+
+# Test deterministic workflow mode
+panos-agent run -m deterministic -p "web_server_setup"
+
+# Test with specific thread (conversation resume)
+panos-agent run -p "List address objects" --thread-id test-session-1
+panos-agent run -p "Now create one called web-1" --thread-id test-session-1
+
+# Test checkpoint management
+panos-agent checkpoints list
+panos-agent checkpoints show --thread-id test-session-1
+```
+
+### Model Selection Testing
+
+```bash
+# Default model (Haiku - fast and cheap)
+panos-agent run -p "List address objects"
+
+# Sonnet (better for complex tasks)
+panos-agent run -p "Create address web-1 at 10.1.1.100 and add to zone trust" --model sonnet
+
+# Full model name
+panos-agent run -p "List objects" --model claude-3-5-sonnet-20241022
+
+# No-stream mode (for CI/CD)
+panos-agent run -p "List objects" --no-stream
+```
+
+### Temperature Testing
+
+```bash
+# Deterministic (default - best for automation)
+panos-agent run -p "List address objects" --temperature 0.0
+
+# Moderate creativity (recommendations)
+panos-agent run -p "Suggest improvements to my security policies" --temperature 0.5
+
+# High creativity (brainstorming)
+panos-agent run -p "Generate descriptive names for 5 database servers" --temperature 0.8
+```
+
+### Memory & Context Testing
+
+```bash
+# First operation - agent stores in memory
+panos-agent run -p "Create address object web-server-1 at 10.1.1.100"
+
+# Second operation - agent recalls previous context
+panos-agent run -p "List all address objects I created"
+# Agent will reference the web-server-1 from memory context
+
+# Workflow execution history
+panos-agent run -m deterministic -p "web_server_setup"
+# Agent stores execution metadata for later analysis
+```
+
+### Integration Tests
+
+```bash
+# Test full workflow: create, list, verify
+panos-agent run -p "Create address object test-server at 192.168.1.10"
+panos-agent run -p "List all address objects with 'test' in the name"
+panos-agent run -p "Show details for test-server"
+
+# Test with thread persistence
+THREAD_ID=$(uuidgen)
+panos-agent run -p "Create address web-1 at 10.1.1.1" --thread-id $THREAD_ID
+panos-agent run -p "Create address web-2 at 10.1.1.2" --thread-id $THREAD_ID
+panos-agent run -p "List all addresses I just created" --thread-id $THREAD_ID
+```
+
+### Performance Testing
+
+```bash
+# Benchmark Haiku (fastest)
+time panos-agent run -p "List address objects" --model haiku --no-stream
+
+# Benchmark Sonnet (more capable)
+time panos-agent run -p "List address objects" --model sonnet --no-stream
+
+# Test streaming vs non-streaming
+panos-agent run -p "List address objects"           # Streaming (real-time feedback)
+panos-agent run -p "List address objects" --no-stream  # No streaming (wait for completion)
+```
+
+### Unit Tests
+
+Run the test suite:
+
+```bash
+# Run all tests
+uv run pytest -v
+
+# Run specific test categories
+uv run pytest tests/unit/test_runtime_context.py -v
+uv run pytest tests/unit/test_cli_model_selection.py -v
+uv run pytest tests/unit/test_memory_store.py -v
+uv run pytest tests/unit/test_autonomous_nodes.py -v
+
+# Run with coverage
+uv run pytest --cov=src --cov-report=html
+
+# Run only passing tests (skip known failing integration tests)
+uv run pytest tests/unit/ -v
+```
+
+---
 
 ## Evaluation & Testing
 

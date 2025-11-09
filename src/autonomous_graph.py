@@ -13,9 +13,10 @@ from langchain_core.messages import SystemMessage
 from langchain_core.messages.base import BaseMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
+from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
 from src.core.checkpoint_manager import get_checkpointer
-from src.core.config import get_settings
+from src.core.config import AgentContext, get_settings
 from src.core.memory_store import (
     get_firewall_operation_summary,
     retrieve_firewall_config,
@@ -65,7 +66,9 @@ Use your judgment to complete tasks efficiently while following security best pr
 """
 
 
-def call_agent(state: AutonomousState, *, store: BaseStore) -> AutonomousState:
+def call_agent(
+    state: AutonomousState, *, runtime: Runtime[AgentContext], store: BaseStore
+) -> AutonomousState:
     """Call LLM agent with tools and memory context.
 
     Retrieves firewall operation history from store and adds it to system prompt
@@ -73,6 +76,7 @@ def call_agent(state: AutonomousState, *, store: BaseStore) -> AutonomousState:
 
     Args:
         state: Current autonomous state
+        runtime: Runtime context with model configuration
         store: BaseStore instance for memory access
 
     Returns:
@@ -123,10 +127,11 @@ def call_agent(state: AutonomousState, *, store: BaseStore) -> AutonomousState:
     if memory_context:
         system_prompt = memory_context + AUTONOMOUS_SYSTEM_PROMPT
 
-    # Initialize LLM with tools
+    # Initialize LLM with tools using runtime context
     llm = ChatAnthropic(
-        model="claude-haiku-4-5",
-        temperature=0,
+        model=runtime.context.model_name,
+        temperature=runtime.context.temperature,
+        max_tokens=runtime.context.max_tokens,
         api_key=settings.anthropic_api_key,
     )
     llm_with_tools = llm.bind_tools(ALL_TOOLS)
@@ -303,7 +308,7 @@ def create_autonomous_graph(store: BaseStore | None = None) -> StateGraph:
     if store is None:
         store = InMemoryStore()
 
-    workflow = StateGraph(AutonomousState)
+    workflow = StateGraph(AutonomousState, context_schema=AgentContext)
 
     # Create tool node
     tool_node = ToolNode(ALL_TOOLS)

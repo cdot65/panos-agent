@@ -30,6 +30,50 @@ app = typer.Typer(
 )
 console = Console()
 
+# Model name mappings for user-friendly CLI options
+# Updated: 2025-01-09 with latest Anthropic Claude models
+MODEL_ALIASES = {
+    # Latest versions (recommended)
+    "sonnet": "claude-sonnet-4-5-20250915",  # Latest Sonnet (Sep 2025)
+    "opus": "claude-opus-4-1-20250805",      # Latest Opus (Aug 2025)
+    "haiku": "claude-haiku-4-5-20251010",    # Latest Haiku (Oct 2025)
+    
+    # Alternative aliases for specific versions
+    "sonnet-4.5": "claude-sonnet-4-5-20250915",
+    "sonnet-4": "claude-sonnet-4-20250514",
+    "sonnet-3.7": "claude-3-7-sonnet-20250219",  # Hybrid reasoning model
+    "opus-4.1": "claude-opus-4-1-20250805",
+    "opus-4": "claude-opus-4-20250514",
+    "haiku-4.5": "claude-haiku-4-5-20251010",
+    "haiku-3.5": "claude-3-5-haiku-20241022",
+}
+
+# All supported models for validation
+SUPPORTED_MODELS = [
+    # Claude 4 series (2025)
+    "claude-opus-4-1-20250805",       # Most powerful
+    "claude-opus-4-20250514",
+    "claude-sonnet-4-5-20250915",     # Latest Sonnet
+    "claude-sonnet-4-20250514",
+    "claude-3-7-sonnet-20250219",     # Hybrid reasoning
+    "claude-haiku-4-5-20251010",      # Latest Haiku
+    
+    # Claude 3 series (2024) - still supported
+    "claude-3-5-haiku-20241022",
+]
+
+
+def resolve_model_name(model_alias: str) -> str:
+    """Resolve user-friendly model alias to full model name.
+
+    Args:
+        model_alias: User-friendly name (sonnet, opus, haiku) or full model name
+
+    Returns:
+        Full Anthropic model name
+    """
+    return MODEL_ALIASES.get(model_alias.lower(), model_alias)
+
 
 def setup_logging(log_level: str = "INFO"):
     """Setup logging with rich handler."""
@@ -54,6 +98,18 @@ def run(
     no_stream: bool = typer.Option(
         False, "--no-stream", help="Disable streaming output (use for CI/CD)"
     ),
+    model: str = typer.Option(
+        "sonnet",
+        "--model",
+        help="LLM model (sonnet, opus, haiku, or full model name)",
+    ),
+    temperature: float = typer.Option(
+        0.0,
+        "--temperature",
+        help="Temperature for LLM (0.0=deterministic, 1.0=creative)",
+        min=0.0,
+        max=1.0,
+    ),
 ):
     """Run PAN-OS agent with specified mode and prompt.
 
@@ -63,6 +119,13 @@ def run(
         # Autonomous mode (natural language) - with streaming
         panos-agent run -p "List all address objects" -m autonomous
         panos-agent run -p "Create address object web-server at 10.1.1.100"
+
+        # Model selection
+        panos-agent run -p "List objects" --model haiku  # Fast, cheap
+        panos-agent run -p "Complex task" --model opus   # Most capable
+
+        # Temperature control
+        panos-agent run -p "Generate names" --temperature 0.7  # More creative
 
         # Deterministic mode (predefined workflows) - with step progress
         panos-agent run -p "simple_address" -m deterministic
@@ -74,8 +137,12 @@ def run(
     """
     setup_logging(log_level)
 
+    # Resolve model name from alias
+    model_name = resolve_model_name(model)
+
     console.print(f"\n[bold cyan]PAN-OS Agent[/bold cyan] - Mode: {mode}")
-    console.print(f"[dim]Prompt: {prompt}[/dim]\n")
+    console.print(f"[dim]Prompt: {prompt}[/dim]")
+    console.print(f"[dim]Model: {model_name} (temp={temperature})[/dim]\n")
 
     try:
         if mode == "autonomous":
@@ -94,7 +161,9 @@ def run(
             tid = thread_id or str(uuid.uuid4())
 
             config = {
-                "configurable": {"thread_id": tid},
+                "configurable": {
+                    "thread_id": tid,
+                },
                 "timeout": TIMEOUT_AUTONOMOUS,
                 "tags": ["panos-agent", "autonomous", "v0.1.0"],
                 "metadata": {
@@ -103,7 +172,15 @@ def run(
                     "user_prompt_length": len(prompt),
                     "timestamp": datetime.now().isoformat(),
                     "firewall_host": settings.panos_hostname,
+                    "model_name": model_name,
+                    "temperature": temperature,
                 },
+            }
+
+            # Runtime context for model/temperature override
+            context = {
+                "model_name": model_name,
+                "temperature": temperature,
             }
 
             if no_stream:
@@ -111,6 +188,7 @@ def run(
                 result = graph.invoke(
                     {"messages": [HumanMessage(content=prompt)]},
                     config=config,
+                    context=context,
                 )
                 last_message = result["messages"][-1]
                 console.print("\n[bold green]Response:[/bold green]")
@@ -121,6 +199,7 @@ def run(
                 for chunk in graph.stream(
                     {"messages": [HumanMessage(content=prompt)]},
                     config=config,
+                    context=context,
                     stream_mode="updates",
                 ):
                     # chunk is dict: {node_name: node_output}

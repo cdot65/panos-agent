@@ -1164,11 +1164,11 @@ PAN-OS-specific error handling.
 ### Phase 2 Progress (12-18h)
 
 - [x] 4. Store API (7 / 7h) ✅
-- [ ] 5. Runtime Context (0 / 3h)
+- [x] 5. Runtime Context (3 / 3h) ✅
 - [ ] 6. Recursion Handling (0 / 2.5h)
 - [ ] 7. Deployment Docs (0 / 1.5h)
 - [x] 8. Streaming UX (2.5 / 2.5h) ✅
-**Total Phase 2:** 9.5 / 16.5h (58% complete)
+**Total Phase 2:** 12.5 / 16.5h (76% complete)
 
 ### Phase 3 Progress (5-9h)
 
@@ -1177,8 +1177,8 @@ PAN-OS-specific error handling.
 - [ ] 11. Time-Travel CLI (0 / 2.5h)
 **Total Phase 3:** 0 / 5.5h
 
-**Grand Total:** 20 / 40.5h (~41 hours median estimate)
-**Completion:** 49% (Phase 1: Observability ✅, Error Handling & Resilience ✅ | Phase 2: Streaming UX ✅, Store API ✅)
+**Grand Total:** 23 / 40.5h (~41 hours median estimate)
+**Completion:** 57% (Phase 1: Observability ✅, Error Handling & Resilience ✅ | Phase 2: Streaming UX ✅, Store API ✅, Runtime Context ✅)
 
 ---
 
@@ -1274,6 +1274,15 @@ Phase 3:
   - ✅ Deterministic graph integration with workflow history
   - ✅ Unit tests (20/20 passing, 85% coverage)
   - ✅ README documentation
+- ✅ Phase 2, Task 5: Runtime Context for LLM Configuration (3h) - FULLY COMPLETE
+  - ✅ AgentContext dataclass with model/temperature/max_tokens
+  - ✅ Autonomous graph integration with Runtime[AgentContext]
+  - ✅ CLI flags: --model and --temperature
+  - ✅ Model aliases system (9 aliases: sonnet, opus, haiku, etc.)
+  - ✅ Context passing to graph invocations
+  - ✅ Unit tests (27/27 passing for runtime context, 13/13 for CLI selection)
+  - ✅ README documentation (115 lines with examples)
+  - ✅ Bonus: 4 documentation files (CLAUDE_MODELS.md, MODEL_UPDATE_SUMMARY.md, etc.)
 - ✅ Phase 2, Task 8: Streaming UX (2.5h) - FULLY COMPLETE
   - ✅ Autonomous mode streaming with real-time progress indicators
   - ✅ Deterministic mode streaming with step-by-step progress
@@ -1285,9 +1294,9 @@ Phase 3:
 
 **Next Steps (Recommended Priority):**
 
-1. **Phase 2, Task 5**: Runtime Context for LLM Configuration (2-4h) - MEDIUM priority
-2. **Phase 2, Task 6**: Recursion Limit Handling (2-3h) - MEDIUM priority (depends on Task 5)
-3. **Phase 2, Task 7**: Deployment Documentation (1-2h) - MEDIUM priority
+1. **Phase 2, Task 6**: Recursion Limit Handling (2-3h) - MEDIUM priority
+2. **Phase 2, Task 7**: Deployment Documentation (1-2h) - MEDIUM priority
+3. **Phase 3**: Optional enhancements (Agent Chat UI, Node Caching, Time-Travel CLI)
 
 **Alternative:** Could return to Phase 1, Task 2 to fix remaining integration tests (low priority)
 
@@ -1296,4 +1305,4 @@ Phase 3:
 **Last Updated:** 2025-01-09
 **Total Tasks:** 60+ subtasks across 11 major tasks
 **Estimated Completion:** 33-51 hours (4-6 days for 1 developer, 2-3 days for 2 developers)
-**Current Progress:** 20h / 40.5h (49% complete)
+**Current Progress:** 23h / 40.5h (57% complete)

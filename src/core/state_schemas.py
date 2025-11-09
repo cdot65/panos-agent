@@ -10,7 +10,6 @@ from typing import Annotated, Literal, Optional, Sequence, TypedDict
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
-
 # ============================================================================
 # Device Context
 # ============================================================================

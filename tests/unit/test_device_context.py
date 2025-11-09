@@ -1,10 +1,11 @@
 """Unit tests for device context functionality."""
 
-import pytest
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from src.core.client import device_info_to_context, get_device_context
-from src.core.panos_models import DeviceType, DeviceInfo
+from src.core.panos_models import DeviceInfo, DeviceType
 from src.core.state_schemas import DeviceContext
 
 
@@ -19,11 +20,11 @@ class TestDeviceInfoToContext:
             serial="012345678901",
             model="PA-220",
             device_type=DeviceType.FIREWALL,
-            platform="PA-220"
+            platform="PA-220",
         )
-        
+
         context = device_info_to_context(device_info)
-        
+
         assert context["device_type"] == "FIREWALL"
         assert context["hostname"] == "fw01.example.com"
         assert context["model"] == "PA-220"
@@ -42,11 +43,11 @@ class TestDeviceInfoToContext:
             serial="012345678901",
             model="PA-5220",
             device_type=DeviceType.FIREWALL,
-            platform="PA-5220"
+            platform="PA-5220",
         )
-        
+
         context = device_info_to_context(device_info, vsys="vsys2")
-        
+
         assert context["device_type"] == "FIREWALL"
         assert context["vsys"] == "vsys2"
         assert context["device_group"] is None
@@ -60,11 +61,11 @@ class TestDeviceInfoToContext:
             serial="012345678902",
             model="M-100",
             device_type=DeviceType.PANORAMA,
-            platform="M-100"
+            platform="M-100",
         )
-        
+
         context = device_info_to_context(device_info)
-        
+
         assert context["device_type"] == "PANORAMA"
         assert context["hostname"] == "panorama01.example.com"
         assert context["model"] == "M-100"
@@ -82,14 +83,11 @@ class TestDeviceInfoToContext:
             serial="012345678902",
             model="M-100",
             device_type=DeviceType.PANORAMA,
-            platform="M-100"
+            platform="M-100",
         )
-        
-        context = device_info_to_context(
-            device_info,
-            device_group="production-firewalls"
-        )
-        
+
+        context = device_info_to_context(device_info, device_group="production-firewalls")
+
         assert context["device_type"] == "PANORAMA"
         assert context["device_group"] == "production-firewalls"
         assert context["template"] is None
@@ -102,14 +100,11 @@ class TestDeviceInfoToContext:
             serial="012345678902",
             model="M-100",
             device_type=DeviceType.PANORAMA,
-            platform="M-100"
+            platform="M-100",
         )
-        
-        context = device_info_to_context(
-            device_info,
-            template="corporate-template"
-        )
-        
+
+        context = device_info_to_context(device_info, template="corporate-template")
+
         assert context["device_type"] == "PANORAMA"
         assert context["device_group"] is None
         assert context["template"] == "corporate-template"
@@ -122,16 +117,16 @@ class TestDeviceInfoToContext:
             serial="012345678902",
             model="M-100",
             device_type=DeviceType.PANORAMA,
-            platform="M-100"
+            platform="M-100",
         )
-        
+
         context = device_info_to_context(
             device_info,
             vsys="vsys1",
             device_group="production-firewalls",
-            template="corporate-template"
+            template="corporate-template",
         )
-        
+
         assert context["device_type"] == "PANORAMA"
         assert context["vsys"] == "vsys1"
         assert context["device_group"] == "production-firewalls"
@@ -145,11 +140,11 @@ class TestDeviceInfoToContext:
             serial="012345678904",
             model="VM-50",
             device_type=DeviceType.FIREWALL,
-            platform="VMWare ESXi"
+            platform="VMWare ESXi",
         )
-        
+
         context = device_info_to_context(device_info)
-        
+
         assert context["device_type"] == "FIREWALL"
         assert context["model"] == "VM-50"
         assert context["platform"] == "VMWare ESXi"
@@ -162,11 +157,11 @@ class TestDeviceInfoToContext:
             serial="012345678903",
             model="Panorama",
             device_type=DeviceType.PANORAMA,
-            platform="Panorama-VM"
+            platform="Panorama-VM",
         )
-        
+
         context = device_info_to_context(device_info)
-        
+
         assert context["device_type"] == "PANORAMA"
         assert context["model"] == "Panorama"
         assert context["platform"] == "Panorama-VM"
@@ -184,12 +179,12 @@ class TestGetDeviceContext:
             serial="012345678901",
             model="PA-220",
             device_type=DeviceType.FIREWALL,
-            platform="PA-220"
+            platform="PA-220",
         )
-        
+
         with patch("src.core.client.get_device_info", return_value=mock_device_info):
             context = await get_device_context()
-            
+
             assert context is not None
             assert context["device_type"] == "FIREWALL"
             assert context["hostname"] == "fw01.example.com"
@@ -205,15 +200,12 @@ class TestGetDeviceContext:
             serial="012345678902",
             model="M-100",
             device_type=DeviceType.PANORAMA,
-            platform="M-100"
+            platform="M-100",
         )
-        
+
         with patch("src.core.client.get_device_info", return_value=mock_device_info):
-            context = await get_device_context(
-                device_group="shared",
-                template="base-template"
-            )
-            
+            context = await get_device_context(device_group="shared", template="base-template")
+
             assert context is not None
             assert context["device_type"] == "PANORAMA"
             assert context["device_group"] == "shared"
@@ -228,12 +220,12 @@ class TestGetDeviceContext:
             serial="012345678901",
             model="PA-5220",
             device_type=DeviceType.FIREWALL,
-            platform="PA-5220"
+            platform="PA-5220",
         )
-        
+
         with patch("src.core.client.get_device_info", return_value=mock_device_info):
             context = await get_device_context(vsys="vsys3")
-            
+
             assert context is not None
             assert context["vsys"] == "vsys3"
 
@@ -242,7 +234,7 @@ class TestGetDeviceContext:
         """Test getting device context when not connected."""
         with patch("src.core.client.get_device_info", return_value=None):
             context = await get_device_context()
-            
+
             assert context is None
 
 
@@ -262,9 +254,9 @@ class TestDeviceTypeDetection:
             serial="012345678901",
             model="PA-220",
             device_type=DeviceType.FIREWALL,
-            platform="PA-220"
+            platform="PA-220",
         )
-        
+
         assert device_info.device_type == DeviceType.FIREWALL
 
     def test_firewall_detection_vm_series(self):
@@ -275,9 +267,9 @@ class TestDeviceTypeDetection:
             serial="012345678904",
             model="VM-50",
             device_type=DeviceType.FIREWALL,
-            platform="VMWare ESXi"
+            platform="VMWare ESXi",
         )
-        
+
         assert device_info.device_type == DeviceType.FIREWALL
 
     def test_panorama_detection_m_series(self):
@@ -288,9 +280,9 @@ class TestDeviceTypeDetection:
             serial="012345678902",
             model="M-100",
             device_type=DeviceType.PANORAMA,
-            platform="M-100"
+            platform="M-100",
         )
-        
+
         assert device_info.device_type == DeviceType.PANORAMA
 
     def test_panorama_detection_virtual(self):
@@ -301,12 +293,11 @@ class TestDeviceTypeDetection:
             serial="012345678903",
             model="Panorama",
             device_type=DeviceType.PANORAMA,
-            platform="Panorama-VM"
+            platform="Panorama-VM",
         )
-        
+
         assert device_info.device_type == DeviceType.PANORAMA
 
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-

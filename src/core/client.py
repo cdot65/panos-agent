@@ -133,7 +133,7 @@ async def get_device_info() -> Optional[DeviceInfo]:
     Returns:
         DeviceInfo if connected, None otherwise
     """
-    global _device_info
+    global _device_info  # noqa: F824
     if _device_info is None:
         # Try to initialize connection if not already done
         try:
@@ -203,7 +203,7 @@ async def test_connection() -> tuple[bool, str]:
         Tuple of (success: bool, message: str)
     """
     try:
-        client = await get_panos_client()
+        await get_panos_client()
         device_info = await get_device_info()
 
         if device_info:
@@ -216,7 +216,7 @@ async def test_connection() -> tuple[bool, str]:
             )
         else:
             # Fallback if device_info not available
-            message = f"✅ Connected to PAN-OS device"
+            message = "✅ Connected to PAN-OS device"
         return True, message
 
     except Exception as e:

@@ -5,12 +5,15 @@ using httpx for HTTP operations and lxml for XML parsing/generation.
 """
 
 import logging
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import httpx
 from lxml import etree
 
 from src.core.panos_models import APIResponse, JobStatus, JobStatusResponse
+
+if TYPE_CHECKING:
+    from src.core.state_schemas import DeviceContext
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +201,13 @@ def build_object_xml(object_type: str, data: dict) -> str:
         ... })
     """
     from src.core.panos_xpath_map import PanOSXPathMap
+    from src.core.xml_validation import validate_object_structure
+
+    # Pre-validate object structure before building XML
+    validation_result = validate_object_structure(object_type, data)
+    if not validation_result.is_valid:
+        error_msg = "; ".join(validation_result.errors)
+        raise PanOSValidationError(f"Validation failed for {object_type}: {error_msg}")
 
     # Get structure definition
     normalized_type = object_type.replace("-", "_")
@@ -359,8 +369,19 @@ async def set_config(xpath: str, element: etree._Element, client: httpx.AsyncCli
 
     Raises:
         PanOSAPIError: If set operation fails
+        PanOSValidationError: If XML validation fails
     """
+    from src.core.xml_validation import extract_object_type_from_xpath, validate_xml_string
+
     xml_str = etree.tostring(element, encoding="unicode")
+
+    # Validate XML before submission
+    object_type = extract_object_type_from_xpath(xpath)
+    validation_result = validate_xml_string(xml_str, object_type)
+    if not validation_result.is_valid:
+        error_msg = "; ".join(validation_result.errors)
+        raise PanOSValidationError(f"XML validation failed: {error_msg}")
+
     params = {"type": "config", "action": "set", "xpath": xpath}
 
     logger.debug(f"Setting config at {xpath}")
@@ -382,8 +403,19 @@ async def edit_config(
 
     Raises:
         PanOSAPIError: If edit operation fails
+        PanOSValidationError: If XML validation fails
     """
+    from src.core.xml_validation import extract_object_type_from_xpath, validate_xml_string
+
     xml_str = etree.tostring(element, encoding="unicode")
+
+    # Validate XML before submission
+    object_type = extract_object_type_from_xpath(xpath)
+    validation_result = validate_xml_string(xml_str, object_type)
+    if not validation_result.is_valid:
+        error_msg = "; ".join(validation_result.errors)
+        raise PanOSValidationError(f"XML validation failed: {error_msg}")
+
     params = {"type": "config", "action": "edit", "xpath": xpath}
 
     logger.debug(f"Editing config at {xpath}")

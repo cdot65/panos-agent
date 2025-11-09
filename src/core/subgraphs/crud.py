@@ -39,7 +39,7 @@ async def validate_input(state: CRUDState) -> CRUDState:
     """
     from src.core.panos_xpath_map import PanOSXPathMap, validate_object_data
 
-    logger.info(f"Validating {state['operation_type']} for {state['object_type']}")
+    logger.debug(f"Validating {state['operation_type']} for {state['object_type']}")
 
     # Check required fields
     if state["operation_type"] in ["create", "update"] and not state.get("data"):
@@ -96,7 +96,7 @@ async def validate_input(state: CRUDState) -> CRUDState:
                 "error": f"Data validation failed: {error}",
             }
 
-    logger.info("✅ Validation passed (including PAN-OS rules)")
+    logger.debug("✅ Validation passed (including PAN-OS rules)")
     return {
         **state,
         "validation_result": "✅ Validation passed",
@@ -118,7 +118,7 @@ async def check_existence(state: CRUDState) -> CRUDState:
     if state["operation_type"] == "list":
         return state  # Skip for list operations
 
-    logger.info(f"Checking existence of {state['object_type']}: {state['object_name']}")
+    logger.debug(f"Checking existence of {state['object_type']}: {state['object_name']}")
 
     try:
         client = await get_panos_client()
@@ -128,12 +128,12 @@ async def check_existence(state: CRUDState) -> CRUDState:
         try:
             result = await get_config(xpath, client)
             exists = result is not None and len(result) > 0
-            logger.info(f"Object exists: {exists}")
+            logger.debug(f"Object exists: {exists}")
             return {**state, "exists": exists}
         except PanOSAPIError as e:
             # Object not found is not an error for existence check
             if "does not exist" in str(e).lower() or "not present" in str(e).lower():
-                logger.info("Object does not exist")
+                logger.debug("Object does not exist")
                 return {**state, "exists": False}
             raise
 
@@ -334,15 +334,13 @@ async def create_object(state: CRUDState) -> CRUDState:
     Returns:
         Updated state with operation_result
     """
-    logger.info(f"Creating {state['object_type']}: {state['data'].get('name')}")
-
-    mode = state.get("mode", "strict")
+    mode = state.get("mode", "skip_if_exists")  # Changed default to skip_if_exists for idempotency
     object_name = state["data"].get("name")
 
-    # Check if already exists
+    # Check if already exists (idempotent behavior)
     if state.get("exists"):
         if mode == "skip_if_exists":
-            logger.info(f"Object {object_name} already exists (skipped)")
+            logger.info(f"⏭️  Object {object_name} already exists (skipped)")
             return {
                 **state,
                 "operation_result": {
@@ -351,13 +349,17 @@ async def create_object(state: CRUDState) -> CRUDState:
                     "object_type": state["object_type"],
                     "reason": "already_exists",
                 },
+                "message": f"⏭️  Skipped: {state['object_type']} '{object_name}' already exists",
             }
-        # Default strict mode - fail if exists
+        # Strict mode - fail if exists (only when explicitly requested)
         return {
             **state,
             "error": f"Object {object_name} already exists",
             "operation_result": {"status": "error", "message": "Object already exists"},
         }
+
+    # Actually create the object
+    logger.debug(f"Creating {state['object_type']}: {object_name}")
 
     try:
         client = await get_panos_client()
@@ -412,7 +414,7 @@ async def read_object(state: CRUDState) -> CRUDState:
     Returns:
         Updated state with operation_result
     """
-    logger.info(f"Reading {state['object_type']}: {state['object_name']}")
+    logger.debug(f"Reading {state['object_type']}: {state['object_name']}")
 
     if not state.get("exists"):
         return {
@@ -472,7 +474,7 @@ async def update_object(state: CRUDState) -> CRUDState:
     Returns:
         Updated state with operation_result
     """
-    logger.info(f"Updating {state['object_type']}: {state['object_name']}")
+    logger.debug(f"Updating {state['object_type']}: {state['object_name']}")
 
     if not state.get("exists"):
         return {
@@ -539,7 +541,7 @@ async def delete_object(state: CRUDState) -> CRUDState:
     Returns:
         Updated state with operation_result
     """
-    logger.info(f"Deleting {state['object_type']}: {state['object_name']}")
+    logger.debug(f"Deleting {state['object_type']}: {state['object_name']}")
 
     mode = state.get("mode", "strict")
     object_name = state["object_name"]
@@ -613,7 +615,7 @@ async def list_objects(state: CRUDState) -> CRUDState:
     Returns:
         Updated state with operation_result
     """
-    logger.info(f"Listing all {state['object_type']} objects")
+    logger.debug(f"Listing all {state['object_type']} objects")
 
     try:
         client = await get_panos_client()

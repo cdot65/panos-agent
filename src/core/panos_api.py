@@ -292,7 +292,7 @@ async def set_config(xpath: str, element: etree._Element, client: httpx.AsyncCli
     xml_str = etree.tostring(element, encoding="unicode")
     params = {"type": "config", "action": "set", "xpath": xpath}
 
-    logger.info(f"Setting config at {xpath}")
+    logger.debug(f"Setting config at {xpath}")
     return await api_request("POST", params, client, xml_data=xml_str)
 
 
@@ -315,7 +315,7 @@ async def edit_config(
     xml_str = etree.tostring(element, encoding="unicode")
     params = {"type": "config", "action": "edit", "xpath": xpath}
 
-    logger.info(f"Editing config at {xpath}")
+    logger.debug(f"Editing config at {xpath}")
     return await api_request("POST", params, client, xml_data=xml_str)
 
 
@@ -334,7 +334,7 @@ async def delete_config(xpath: str, client: httpx.AsyncClient) -> APIResponse:
     """
     params = {"type": "config", "action": "delete", "xpath": xpath}
 
-    logger.info(f"Deleting config at {xpath}")
+    logger.debug(f"Deleting config at {xpath}")
     return await api_request("GET", params, client)
 
 

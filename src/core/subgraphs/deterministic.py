@@ -6,6 +6,7 @@ Supports HITL approval gates for critical operations.
 """
 
 import logging
+import sys
 from typing import Literal
 
 from langchain_anthropic import ChatAnthropic
@@ -22,6 +23,16 @@ from src.tools import ALL_TOOLS
 logger = logging.getLogger(__name__)
 
 
+def is_cli_mode() -> bool:
+    """Detect if running in CLI mode (terminal) vs Studio/API mode.
+
+    Returns:
+        True if running in CLI with interactive terminal, False otherwise
+    """
+    # Check if stdin is a TTY (interactive terminal)
+    return sys.stdin.isatty()
+
+
 def load_workflow(state: DeterministicWorkflowState) -> DeterministicWorkflowState:
     """Load and initialize workflow steps.
 
@@ -32,7 +43,7 @@ def load_workflow(state: DeterministicWorkflowState) -> DeterministicWorkflowSta
         Updated state with initialized steps
     """
     workflow_name = state["workflow_name"]
-    logger.info(f"Loading workflow: {workflow_name}")
+    logger.debug(f"Loading workflow: {workflow_name}")
 
     # Workflows will be defined separately and passed in workflow_params
     steps = state.get("steps", [])
@@ -50,7 +61,7 @@ def load_workflow(state: DeterministicWorkflowState) -> DeterministicWorkflowSta
     }
 
 
-def execute_step(state: DeterministicWorkflowState) -> DeterministicWorkflowState:
+async def execute_step(state: DeterministicWorkflowState) -> DeterministicWorkflowState:
     """Execute current workflow step.
 
     Args:
@@ -100,9 +111,9 @@ def execute_step(state: DeterministicWorkflowState) -> DeterministicWorkflowStat
                     ],
                 }
 
-            # Execute tool
+            # Execute tool (async)
             try:
-                result = tool.invoke(tool_params)
+                result = await tool.ainvoke(tool_params)
             except PanOSConnectionError as e:
                 # Network/connectivity errors - these are often transient
                 logger.error(f"PAN-OS connectivity error in step '{step_name}': {e}")
@@ -140,7 +151,7 @@ def execute_step(state: DeterministicWorkflowState) -> DeterministicWorkflowStat
             # Determine status from result message
             if "✅" in result:
                 status = "success"
-            elif "⏭️" in result or "Skipped" in result:
+            elif "⏭️" in result or "Skipped" in result or "skipped" in result.lower():
                 status = "skipped"
             else:
                 status = "error"
@@ -164,20 +175,54 @@ def execute_step(state: DeterministicWorkflowState) -> DeterministicWorkflowStat
             message = step.get("message", "Approval required to continue")
             logger.info(f"Requesting approval: {message}")
 
-            # Use LangGraph interrupt for HITL
-            approval = interrupt(
-                {
-                    "type": "approval",
-                    "message": message,
-                    "step": step_name,
-                }
-            )
+            # Check if running in CLI mode
+            if is_cli_mode():
+                # CLI mode: Use typer.confirm for terminal prompt
+                import typer
 
-            output = {
-                "step": step_name,
-                "status": "approved" if approval else "rejected",
-                "result": f"User {'approved' if approval else 'rejected'} continuation",
-            }
+                try:
+                    approved = typer.confirm(f"\n{message}", default=False)
+                except (EOFError, KeyboardInterrupt):
+                    # Handle Ctrl+C or EOF gracefully
+                    approved = False
+                    logger.info("Approval interrupted by user")
+
+                if not approved:
+                    logger.info(f"❌ User rejected approval: {step_name}")
+                    return {
+                        **state,
+                        "step_outputs": state["step_outputs"]
+                        + [
+                            {
+                                "step": step_name,
+                                "status": "rejected",
+                                "result": "❌ User rejected approval",
+                            }
+                        ],
+                        "workflow_complete": True,  # Stop workflow
+                    }
+
+                logger.info(f"✅ User approved: {step_name}")
+                output = {
+                    "step": step_name,
+                    "status": "approved",
+                    "result": "✅ User approved continuation",
+                }
+            else:
+                # Studio/API mode: Use LangGraph interrupt for HITL
+                approval = interrupt(
+                    {
+                        "type": "approval",
+                        "message": message,
+                        "step": step_name,
+                    }
+                )
+
+                output = {
+                    "step": step_name,
+                    "status": "approved" if approval else "rejected",
+                    "result": f"User {'approved' if approval else 'rejected'} continuation",
+                }
 
             return {
                 **state,
@@ -200,6 +245,12 @@ def execute_step(state: DeterministicWorkflowState) -> DeterministicWorkflowStat
 
     except Exception as e:
         # Catch any other unexpected errors (non-PAN-OS)
+        # Re-raise GraphInterrupt for Studio/API mode (not an error)
+        from langgraph.errors import GraphInterrupt
+
+        if isinstance(e, GraphInterrupt):
+            raise
+
         logger.error(f"Unexpected error executing step '{step_name}': {e}", exc_info=True)
         return {
             **state,
@@ -216,7 +267,7 @@ def execute_step(state: DeterministicWorkflowState) -> DeterministicWorkflowStat
         }
 
 
-def evaluate_step(state: DeterministicWorkflowState) -> DeterministicWorkflowState:
+async def evaluate_step(state: DeterministicWorkflowState) -> DeterministicWorkflowState:
     """Use LLM to evaluate step result and decide next action.
 
     Args:
@@ -280,7 +331,7 @@ Should we continue to the next step?"""
     ]
 
     try:
-        response = llm.invoke(messages)
+        response = await llm.ainvoke(messages)
         content = response.content
 
         # Parse JSON response
@@ -294,7 +345,7 @@ Should we continue to the next step?"""
 
         evaluation = json.loads(content)
 
-        logger.info(f"Step evaluation: {evaluation['decision']} - {evaluation['reason']}")
+        logger.debug(f"Step evaluation: {evaluation['decision']} - {evaluation['reason']}")
 
         return {
             **state,
@@ -370,6 +421,12 @@ def format_result(state: DeterministicWorkflowState) -> DeterministicWorkflowSta
         1 for output in state["step_outputs"] if output.get("status") == "success"
     )
     skipped_steps = sum(1 for output in state["step_outputs"] if output.get("status") == "skipped")
+    approved_steps = sum(
+        1 for output in state["step_outputs"] if output.get("status") == "approved"
+    )
+    rejected_steps = sum(
+        1 for output in state["step_outputs"] if output.get("status") == "rejected"
+    )
     failed_steps = sum(1 for output in state["step_outputs"] if output.get("status") == "error")
 
     # Build result message
@@ -380,8 +437,14 @@ def format_result(state: DeterministicWorkflowState) -> DeterministicWorkflowSta
         f"✅ Successful: {successful_steps}",
     ]
 
+    if approved_steps > 0:
+        message_parts.append(f"✅ Approved: {approved_steps}")
+
     if skipped_steps > 0:
         message_parts.append(f"⏭️  Skipped: {skipped_steps}")
+
+    if rejected_steps > 0:
+        message_parts.append(f"❌ Rejected: {rejected_steps}")
 
     if failed_steps > 0:
         message_parts.append(f"❌ Failed: {failed_steps}")
@@ -392,8 +455,12 @@ def format_result(state: DeterministicWorkflowState) -> DeterministicWorkflowSta
         status = output.get("status")
         if status == "success":
             status_icon = "✅"
+        elif status == "approved":
+            status_icon = "✅"
         elif status == "skipped":
             status_icon = "⏭️ "
+        elif status == "rejected":
+            status_icon = "❌"
         else:
             status_icon = "❌"
 

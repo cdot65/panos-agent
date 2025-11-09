@@ -84,6 +84,10 @@ def setup_logging(log_level: str = "INFO"):
         handlers=[RichHandler(console=console, rich_tracebacks=True)],
     )
 
+    # Suppress verbose httpx HTTP request logs unless in DEBUG mode
+    if log_level != "DEBUG":
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+
 
 async def run_autonomous_async(
     prompt: str,

@@ -1444,6 +1444,14 @@ Phase 3:
 
 **Completed:**
 
+- ✅ Log Verbosity Reduction (0.5h) - COMPLETE
+  - ✅ Moved internal operation logs from INFO to DEBUG across:
+    - src/core/client.py (connection initialization, client closed)
+    - src/core/panos_api.py (set/edit/delete config operations)
+    - src/core/subgraphs/crud.py (operation details, existence checks)
+    - src/core/subgraphs/deterministic.py (workflow loading, step evaluation)
+  - ✅ Configured httpx logger to WARNING level (suppress HTTP request logs)
+  - ✅ Kept user-facing logs at INFO: step execution, approvals, final results, errors
 - ✅ Phase 1.1: LangSmith Environment Variables (0.5h)
 - ✅ Phase 1.2: Anonymizers Implementation (2-3h) - core implementation, tests deferred
 - ✅ Phase 1.3: Metadata and Tags (1.5h) - FULLY COMPLETE including observability docs

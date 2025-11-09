@@ -19,9 +19,9 @@ async def address_create(
     address_type: str = "ip-netmask",
     description: Optional[str] = None,
     tag: Optional[list[str]] = None,
-    mode: str = "strict",
+    mode: str = "skip_if_exists",
 ) -> str:
-    """Create a new address object on PAN-OS firewall.
+    """Create a new address object on PAN-OS firewall (idempotent).
 
     Args:
         name: Name of the address object
@@ -29,7 +29,7 @@ async def address_create(
         address_type: Type of address (ip-netmask, ip-range, fqdn) - default: ip-netmask
         description: Optional description
         tag: Optional list of tags to apply
-        mode: Error handling mode - "strict" (fail if exists) or "skip_if_exists" (skip if exists)
+        mode: Error handling mode - "skip_if_exists" (skip if exists, default) or "strict" (fail if exists)
 
     Returns:
         Success/failure message

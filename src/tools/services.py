@@ -18,7 +18,7 @@ async def service_create(
     port: str,
     description: Optional[str] = None,
     tag: Optional[list[str]] = None,
-    mode: str = "strict",
+    mode: str = "skip_if_exists",
 ) -> str:
     """Create a new service object on PAN-OS firewall.
 

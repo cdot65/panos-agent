@@ -35,7 +35,7 @@ async def get_panos_client() -> httpx.AsyncClient:
     if _panos_client is None:
         settings = get_settings()
 
-        logger.info(f"Initializing PAN-OS connection to {settings.panos_hostname}")
+        logger.debug(f"Initializing PAN-OS connection to {settings.panos_hostname}")
 
         # Create async client with connection pooling and authentication
         _panos_client = httpx.AsyncClient(
@@ -83,7 +83,7 @@ async def close_panos_client() -> None:
     if _panos_client is not None:
         await _panos_client.aclose()
         _panos_client = None
-        logger.info("PAN-OS client closed")
+        logger.debug("PAN-OS client closed")
 
 
 async def reset_panos_client() -> None:

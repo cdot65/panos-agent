@@ -12,8 +12,9 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
-from panos.errors import PanConnectionTimeout, PanDeviceError, PanURLError
+
 from src.core.config import get_settings
+from src.core.panos_api import PanOSAPIError, PanOSConnectionError
 from src.core.retry_policies import PANOS_RETRY_POLICY
 from src.core.state_schemas import DeterministicWorkflowState
 from src.tools import ALL_TOOLS

@@ -2,36 +2,35 @@
 
 Workflow: validate → check_existence → create/update/delete → verify → format
 
-Adapted from SCM agent patterns for PAN-OS XML API.
+Async implementation using lxml + httpx for PAN-OS XML API.
 """
 
 import logging
-from typing import Literal
+from typing import Any, Literal, Optional
 
 from langgraph.graph import END, START, StateGraph
-from panos.errors import PanConnectionTimeout, PanDeviceError, PanURLError
-from panos.objects import AddressGroup, AddressObject, ServiceGroup, ServiceObject
-from panos.policies import NatRule, SecurityRule
-from src.core.client import get_firewall_client
-from src.core.retry_helper import with_retry
+from lxml import etree
+
+from src.core.client import get_panos_client
+from src.core.panos_api import (
+    PanOSAPIError,
+    PanOSConnectionError,
+    build_xpath,
+    build_xml_element,
+    delete_config,
+    edit_config,
+    get_config,
+    set_config,
+)
+from src.core.panos_models import parse_xml_to_dict
 from src.core.retry_policies import PANOS_RETRY_POLICY
 from src.core.state_schemas import CRUDState
 
 logger = logging.getLogger(__name__)
 
-# Mapping of object types to pan-os-python classes
-OBJECT_CLASS_MAP = {
-    "address": AddressObject,
-    "address_group": AddressGroup,
-    "service": ServiceObject,
-    "service_group": ServiceGroup,
-    "security_policy": SecurityRule,
-    "nat_policy": NatRule,
-}
 
-
-def validate_input(state: CRUDState) -> CRUDState:
-    """Validate CRUD operation inputs.
+async def validate_input(state: CRUDState) -> CRUDState:
+    """Validate CRUD operation inputs with PAN-OS rules.
 
     Args:
         state: Current CRUD state
@@ -39,6 +38,8 @@ def validate_input(state: CRUDState) -> CRUDState:
     Returns:
         Updated state with validation_result
     """
+    from src.core.panos_xpath_map import PanOSXPathMap, validate_object_data
+
     logger.info(f"Validating {state['operation_type']} for {state['object_type']}")
 
     # Check required fields
@@ -57,20 +58,53 @@ def validate_input(state: CRUDState) -> CRUDState:
         }
 
     # Validate object type
-    if state["object_type"] not in OBJECT_CLASS_MAP:
+    valid_types = [
+        "address",
+        "address-group",
+        "service",
+        "service-group",
+        "security-policy",
+        "nat-policy",
+    ]
+    if state["object_type"] not in valid_types:
         return {
             **state,
             "validation_result": f"❌ Unsupported object_type: {state['object_type']}",
             "error": f"Object type {state['object_type']} not supported",
         }
 
+    # Validate object name with PAN-OS rules
+    if state.get("object_name"):
+        is_valid, error = PanOSXPathMap.validate_object_name(state["object_name"])
+        if not is_valid:
+            logger.warning(f"Invalid object name: {error}")
+            return {
+                **state,
+                "validation_result": f"❌ Invalid object name: {error}",
+                "error": f"Name validation failed: {error}",
+            }
+
+    # Validate object data with PAN-OS rules
+    if state.get("data") and state["operation_type"] in ["create", "update"]:
+        # Normalize object type (remove hyphens for validation)
+        normalized_type = state["object_type"].replace("-", "_")
+        is_valid, error = validate_object_data(normalized_type, state["data"])
+        if not is_valid:
+            logger.warning(f"Invalid object data: {error}")
+            return {
+                **state,
+                "validation_result": f"❌ Invalid object data: {error}",
+                "error": f"Data validation failed: {error}",
+            }
+
+    logger.info("✅ Validation passed (including PAN-OS rules)")
     return {
         **state,
         "validation_result": "✅ Validation passed",
     }
 
 
-def check_existence(state: CRUDState) -> CRUDState:
+async def check_existence(state: CRUDState) -> CRUDState:
     """Check if object exists on firewall.
 
     Args:
@@ -88,32 +122,30 @@ def check_existence(state: CRUDState) -> CRUDState:
     logger.info(f"Checking existence of {state['object_type']}: {state['object_name']}")
 
     try:
-        fw = get_firewall_client()
-        object_class = OBJECT_CLASS_MAP[state["object_type"]]
+        client = await get_panos_client()
+        xpath = build_xpath(state["object_type"], name=state["object_name"])
 
-        # Refresh objects from firewall
-        if state["object_type"] in ["address", "address_group", "service", "service_group"]:
-            # Objects live under firewall
-            object_class.refreshall(fw)
-            existing = fw.find(state["object_name"], object_class)
-        else:
-            # Policies (security/NAT) need different handling
-            # For now, simplified - will expand in policy-specific implementation
-            existing = None
+        # Try to get the config
+        try:
+            result = await get_config(xpath, client)
+            exists = result is not None and len(result) > 0
+            logger.info(f"Object exists: {exists}")
+            return {**state, "exists": exists}
+        except PanOSAPIError as e:
+            # Object not found is not an error for existence check
+            if "does not exist" in str(e).lower() or "not present" in str(e).lower():
+                logger.info(f"Object does not exist")
+                return {**state, "exists": False}
+            raise
 
-        exists = existing is not None
-        logger.info(f"Object exists: {exists}")
-
-        return {**state, "exists": exists}
-
-    except (PanConnectionTimeout, PanURLError) as e:
+    except PanOSConnectionError as e:
         logger.error(f"PAN-OS connectivity error checking existence: {e}")
         return {
             **state,
             "exists": False,
             "error": f"Connectivity error: {e}",
         }
-    except PanDeviceError as e:
+    except PanOSAPIError as e:
         logger.error(f"PAN-OS API error checking existence: {e}")
         return {
             **state,
@@ -161,7 +193,140 @@ def route_operation(
     return operation_map[state["operation_type"]]
 
 
-def create_object(state: CRUDState) -> CRUDState:
+def build_object_xml(object_type: str, data: dict[str, Any]) -> etree._Element:
+    """Build XML element for PAN-OS object.
+
+    Args:
+        object_type: Type of object
+        data: Object data
+
+    Returns:
+        lxml Element
+    """
+    name = data.get("name", "")
+    entry = etree.Element("entry", name=name)
+
+    if object_type == "address":
+        # Address object
+        addr_type = data.get("type", "ip-netmask")
+        type_elem = etree.SubElement(entry, addr_type)
+        type_elem.text = data.get("value", "")
+
+        if data.get("description"):
+            desc_elem = etree.SubElement(entry, "description")
+            desc_elem.text = data["description"]
+
+        if data.get("tags"):
+            tag_elem = etree.SubElement(entry, "tag")
+            for tag in data["tags"]:
+                member = etree.SubElement(tag_elem, "member")
+                member.text = tag
+
+    elif object_type == "address-group":
+        # Address group
+        if data.get("static_members"):
+            static_elem = etree.SubElement(entry, "static")
+            for member in data["static_members"]:
+                member_elem = etree.SubElement(static_elem, "member")
+                member_elem.text = member
+
+        if data.get("dynamic_filter"):
+            dynamic_elem = etree.SubElement(entry, "dynamic")
+            filter_elem = etree.SubElement(dynamic_elem, "filter")
+            filter_elem.text = data["dynamic_filter"]
+
+        if data.get("description"):
+            desc_elem = etree.SubElement(entry, "description")
+            desc_elem.text = data["description"]
+
+    elif object_type == "service":
+        # Service object
+        protocol = data.get("protocol", "tcp")
+        protocol_elem = etree.SubElement(entry, "protocol")
+        proto_type_elem = etree.SubElement(protocol_elem, protocol)
+        port_elem = etree.SubElement(proto_type_elem, "port")
+        port_elem.text = str(data.get("port", ""))
+
+        if data.get("description"):
+            desc_elem = etree.SubElement(entry, "description")
+            desc_elem.text = data["description"]
+
+    elif object_type == "service-group":
+        # Service group
+        members_elem = etree.SubElement(entry, "members")
+        for member in data.get("members", []):
+            member_elem = etree.SubElement(members_elem, "member")
+            member_elem.text = member
+
+        if data.get("description"):
+            desc_elem = etree.SubElement(entry, "description")
+            desc_elem.text = data["description"]
+
+    elif object_type == "security-policy":
+        # Security policy rule
+        # Source zones
+        if data.get("source_zones"):
+            from_elem = etree.SubElement(entry, "from")
+            for zone in data["source_zones"]:
+                member = etree.SubElement(from_elem, "member")
+                member.text = zone
+
+        # Destination zones
+        if data.get("destination_zones"):
+            to_elem = etree.SubElement(entry, "to")
+            for zone in data["destination_zones"]:
+                member = etree.SubElement(to_elem, "member")
+                member.text = zone
+
+        # Source addresses
+        if data.get("source_addresses"):
+            source_elem = etree.SubElement(entry, "source")
+            for addr in data["source_addresses"]:
+                member = etree.SubElement(source_elem, "member")
+                member.text = addr
+
+        # Destination addresses
+        if data.get("destination_addresses"):
+            dest_elem = etree.SubElement(entry, "destination")
+            for addr in data["destination_addresses"]:
+                member = etree.SubElement(dest_elem, "member")
+                member.text = addr
+
+        # Applications
+        if data.get("applications"):
+            app_elem = etree.SubElement(entry, "application")
+            for app in data["applications"]:
+                member = etree.SubElement(app_elem, "member")
+                member.text = app
+
+        # Services
+        if data.get("services"):
+            svc_elem = etree.SubElement(entry, "service")
+            for svc in data["services"]:
+                member = etree.SubElement(svc_elem, "member")
+                member.text = svc
+
+        # Action
+        action_elem = etree.SubElement(entry, "action")
+        action_elem.text = data.get("action", "allow")
+
+        # Logging
+        if data.get("log_start", False):
+            log_start = etree.SubElement(entry, "log-start")
+            log_start.text = "yes"
+
+        if data.get("log_end", True):
+            log_end = etree.SubElement(entry, "log-end")
+            log_end.text = "yes"
+
+        if data.get("description"):
+            desc_elem = etree.SubElement(entry, "description")
+            desc_elem.text = data["description"]
+
+    return entry
+
+
+async def create_object(state: CRUDState) -> CRUDState:
     """Create new PAN-OS object.
 
     Args:
@@ -173,7 +338,7 @@ def create_object(state: CRUDState) -> CRUDState:
     logger.info(f"Creating {state['object_type']}: {state['data'].get('name')}")
 
     mode = state.get("mode", "strict")
-    object_name = state['data'].get('name')
+    object_name = state["data"].get("name")
 
     # Check if already exists
     if state.get("exists"):
@@ -196,39 +361,34 @@ def create_object(state: CRUDState) -> CRUDState:
         }
 
     try:
-        fw = get_firewall_client()
-        object_class = OBJECT_CLASS_MAP[state["object_type"]]
+        client = await get_panos_client()
+        xpath = build_xpath(state["object_type"])
 
-        # Create object instance
-        obj = object_class(**state["data"])
+        # Build XML element
+        element = build_object_xml(state["object_type"], state["data"])
 
-        # Add to firewall and create
-        fw.add(obj)
+        # Create via set config
+        await set_config(xpath, element, client)
 
-        def create_op():
-            obj.create()
-
-        with_retry(create_op, max_retries=3)
-
-        logger.info(f"Successfully created {state['object_type']}: {state['data'].get('name')}")
+        logger.info(f"Successfully created {state['object_type']}: {object_name}")
 
         return {
             **state,
             "operation_result": {
                 "status": "success",
-                "name": state["data"].get("name"),
+                "name": object_name,
                 "object_type": state["object_type"],
             },
         }
 
-    except (PanConnectionTimeout, PanURLError) as e:
+    except PanOSConnectionError as e:
         logger.error(f"PAN-OS connectivity error creating object: {e}")
         return {
             **state,
             "error": f"Connectivity error: {e}",
             "operation_result": {"status": "error", "message": f"Connectivity error: {e}"},
         }
-    except PanDeviceError as e:
+    except PanOSAPIError as e:
         logger.error(f"PAN-OS API error creating object: {e}")
         return {
             **state,
@@ -244,7 +404,7 @@ def create_object(state: CRUDState) -> CRUDState:
         }
 
 
-def read_object(state: CRUDState) -> CRUDState:
+async def read_object(state: CRUDState) -> CRUDState:
     """Read existing PAN-OS object.
 
     Args:
@@ -263,32 +423,32 @@ def read_object(state: CRUDState) -> CRUDState:
         }
 
     try:
-        fw = get_firewall_client()
-        object_class = OBJECT_CLASS_MAP[state["object_type"]]
+        client = await get_panos_client()
+        xpath = build_xpath(state["object_type"], name=state["object_name"])
 
-        object_class.refreshall(fw)
-        obj = fw.find(state["object_name"], object_class)
+        # Get config
+        result = await get_config(xpath, client)
 
-        # Extract object data
-        obj_dict = vars(obj)
+        # Parse XML to dict
+        obj_data = parse_xml_to_dict(result)
 
         return {
             **state,
             "operation_result": {
                 "status": "success",
                 "name": state["object_name"],
-                "data": obj_dict,
+                "data": obj_data,
             },
         }
 
-    except (PanConnectionTimeout, PanURLError) as e:
+    except PanOSConnectionError as e:
         logger.error(f"PAN-OS connectivity error reading object: {e}")
         return {
             **state,
             "error": f"Connectivity error: {e}",
             "operation_result": {"status": "error", "message": f"Connectivity error: {e}"},
         }
-    except PanDeviceError as e:
+    except PanOSAPIError as e:
         logger.error(f"PAN-OS API error reading object: {e}")
         return {
             **state,
@@ -304,7 +464,7 @@ def read_object(state: CRUDState) -> CRUDState:
         }
 
 
-def update_object(state: CRUDState) -> CRUDState:
+async def update_object(state: CRUDState) -> CRUDState:
     """Update existing PAN-OS object.
 
     Args:
@@ -323,21 +483,19 @@ def update_object(state: CRUDState) -> CRUDState:
         }
 
     try:
-        fw = get_firewall_client()
-        object_class = OBJECT_CLASS_MAP[state["object_type"]]
+        client = await get_panos_client()
+        xpath = build_xpath(state["object_type"], name=state["object_name"])
 
-        object_class.refreshall(fw)
-        obj = fw.find(state["object_name"], object_class)
+        # Merge name from object_name if not in data
+        update_data = {**state["data"]}
+        if "name" not in update_data:
+            update_data["name"] = state["object_name"]
 
-        # Update attributes from data
-        for key, value in state["data"].items():
-            if hasattr(obj, key):
-                setattr(obj, key, value)
+        # Build XML element with updated data
+        element = build_object_xml(state["object_type"], update_data)
 
-        def update_op():
-            obj.apply()
-
-        with_retry(update_op, max_retries=3)
+        # Update via edit config
+        await edit_config(xpath, element, client)
 
         logger.info(f"Successfully updated {state['object_type']}: {state['object_name']}")
 
@@ -350,14 +508,14 @@ def update_object(state: CRUDState) -> CRUDState:
             },
         }
 
-    except (PanConnectionTimeout, PanURLError) as e:
+    except PanOSConnectionError as e:
         logger.error(f"PAN-OS connectivity error updating object: {e}")
         return {
             **state,
             "error": f"Connectivity error: {e}",
             "operation_result": {"status": "error", "message": f"Connectivity error: {e}"},
         }
-    except PanDeviceError as e:
+    except PanOSAPIError as e:
         logger.error(f"PAN-OS API error updating object: {e}")
         return {
             **state,
@@ -373,7 +531,7 @@ def update_object(state: CRUDState) -> CRUDState:
         }
 
 
-def delete_object(state: CRUDState) -> CRUDState:
+async def delete_object(state: CRUDState) -> CRUDState:
     """Delete existing PAN-OS object.
 
     Args:
@@ -385,7 +543,7 @@ def delete_object(state: CRUDState) -> CRUDState:
     logger.info(f"Deleting {state['object_type']}: {state['object_name']}")
 
     mode = state.get("mode", "strict")
-    object_name = state['object_name']
+    object_name = state["object_name"]
 
     if not state.get("exists"):
         if mode == "skip_if_missing":
@@ -407,16 +565,11 @@ def delete_object(state: CRUDState) -> CRUDState:
         }
 
     try:
-        fw = get_firewall_client()
-        object_class = OBJECT_CLASS_MAP[state["object_type"]]
+        client = await get_panos_client()
+        xpath = build_xpath(state["object_type"], name=state["object_name"])
 
-        object_class.refreshall(fw)
-        obj = fw.find(state["object_name"], object_class)
-
-        def delete_op():
-            obj.delete()
-
-        with_retry(delete_op, max_retries=3)
+        # Delete config
+        await delete_config(xpath, client)
 
         logger.info(f"Successfully deleted {state['object_type']}: {state['object_name']}")
 
@@ -429,14 +582,14 @@ def delete_object(state: CRUDState) -> CRUDState:
             },
         }
 
-    except (PanConnectionTimeout, PanURLError) as e:
+    except PanOSConnectionError as e:
         logger.error(f"PAN-OS connectivity error deleting object: {e}")
         return {
             **state,
             "error": f"Connectivity error: {e}",
             "operation_result": {"status": "error", "message": f"Connectivity error: {e}"},
         }
-    except PanDeviceError as e:
+    except PanOSAPIError as e:
         logger.error(f"PAN-OS API error deleting object: {e}")
         return {
             **state,
@@ -452,7 +605,7 @@ def delete_object(state: CRUDState) -> CRUDState:
         }
 
 
-def list_objects(state: CRUDState) -> CRUDState:
+async def list_objects(state: CRUDState) -> CRUDState:
     """List all objects of specified type.
 
     Args:
@@ -464,13 +617,18 @@ def list_objects(state: CRUDState) -> CRUDState:
     logger.info(f"Listing all {state['object_type']} objects")
 
     try:
-        fw = get_firewall_client()
-        object_class = OBJECT_CLASS_MAP[state["object_type"]]
+        client = await get_panos_client()
+        xpath = build_xpath(state["object_type"])
 
-        object_class.refreshall(fw)
-        objects = fw.findall(object_class)
+        # Get all objects
+        result = await get_config(xpath, client)
 
-        object_list = [{"name": obj.name} for obj in objects]
+        # Parse entries
+        object_list = []
+        for entry in result.findall(".//entry"):
+            name = entry.get("name", "")
+            if name:
+                object_list.append({"name": name})
 
         return {
             **state,
@@ -481,14 +639,14 @@ def list_objects(state: CRUDState) -> CRUDState:
             },
         }
 
-    except (PanConnectionTimeout, PanURLError) as e:
+    except PanOSConnectionError as e:
         logger.error(f"PAN-OS connectivity error listing objects: {e}")
         return {
             **state,
             "error": f"Connectivity error: {e}",
             "operation_result": {"status": "error", "message": f"Connectivity error: {e}"},
         }
-    except PanDeviceError as e:
+    except PanOSAPIError as e:
         logger.error(f"PAN-OS API error listing objects: {e}")
         return {
             **state,
@@ -504,7 +662,7 @@ def list_objects(state: CRUDState) -> CRUDState:
         }
 
 
-def format_response(state: CRUDState) -> CRUDState:
+async def format_response(state: CRUDState) -> CRUDState:
     """Format final response message.
 
     Args:
@@ -531,9 +689,11 @@ def format_response(state: CRUDState) -> CRUDState:
             elif state["operation_type"] == "list":
                 message = f"✅ Found {result.get('count')} {state['object_type']} objects"
         elif status == "skipped":
-            reason = result.get('reason')
+            reason = result.get("reason")
             if reason == "already_exists":
-                message = f"⏭️  Skipped {state['object_type']}: {result.get('name')} (already exists)"
+                message = (
+                    f"⏭️  Skipped {state['object_type']}: {result.get('name')} (already exists)"
+                )
             elif reason == "not_found":
                 message = f"⏭️  Skipped {state['object_type']}: {result.get('name')} (not found)"
             else:
@@ -554,7 +714,7 @@ def create_crud_subgraph() -> StateGraph:
     """
     workflow = StateGraph(CRUDState)
 
-    # Add nodes
+    # Add nodes (all async now)
     workflow.add_node("validate_input", validate_input)
     workflow.add_node("check_existence", check_existence, retry=PANOS_RETRY_POLICY)
     workflow.add_node("create_object", create_object, retry=PANOS_RETRY_POLICY)

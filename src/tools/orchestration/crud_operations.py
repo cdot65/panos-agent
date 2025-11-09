@@ -73,14 +73,18 @@ def crud_operation(
     crud_graph = create_crud_subgraph()
 
     try:
-        result = crud_graph.invoke(
-            {
-                "operation_type": operation,
-                "object_type": object_type,
-                "object_name": object_name,
-                "data": data,
-            },
-            config={"configurable": {"thread_id": str(uuid.uuid4())}},
+        import asyncio
+
+        result = asyncio.run(
+            crud_graph.ainvoke(
+                {
+                    "operation_type": operation,
+                    "object_type": object_type,
+                    "object_name": object_name,
+                    "data": data,
+                },
+                config={"configurable": {"thread_id": str(uuid.uuid4())}},
+            )
         )
         return result["message"]
     except Exception as e:

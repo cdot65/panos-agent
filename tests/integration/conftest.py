@@ -1,64 +1,81 @@
 """Shared fixtures for integration tests.
 
-Provides compiled graph fixtures and mock firewall client.
+Provides compiled graph fixtures and mock httpx client with respx.
 """
 
 import uuid
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
+import httpx
 import pytest
-from panos.firewall import Firewall
-from panos.objects import AddressObject
+import respx
+from httpx import Response
 
 
 @pytest.fixture
-def mock_firewall():
-    """Mock PAN-OS firewall client for integration tests.
-
+async def mock_panos_client():
+    """Mock httpx AsyncClient for PAN-OS API integration tests.
+    
     Returns:
-        Mock firewall with common methods and attributes
+        AsyncMock of httpx.AsyncClient with common responses
     """
-    fw = MagicMock(spec=Firewall)
-    fw.hostname = "192.168.1.1"
-    fw.api_key = "test-api-key"
-    fw.serial = "021201109830"
-    fw.version = "11.1.4-h7"
-
-    # Mock refreshall to avoid xpath errors
-    def mock_refreshall(obj_class, fw_instance):
-        """Mock refreshall to return empty list."""
-        return []
-
-    # Patch at class level
-    AddressObject.refreshall = Mock(side_effect=mock_refreshall)
-
-    return fw
+    client = AsyncMock(spec=httpx.AsyncClient)
+    
+    # Mock successful API response
+    success_response = Response(
+        200,
+        content=b'<response status="success" code="20"><msg>command succeeded</msg></response>',
+    )
+    
+    # Default mock responses
+    client.get = AsyncMock(return_value=success_response)
+    client.post = AsyncMock(return_value=success_response)
+    
+    return client
 
 
 @pytest.fixture
-def autonomous_graph(mock_firewall):
-    """Create autonomous graph with mocked firewall.
+def respx_mock():
+    """Respx mock for HTTP requests.
+    
+    Yields:
+        respx.MockRouter for mocking httpx requests
+    """
+    with respx.mock:
+        # Mock PAN-OS API endpoints
+        respx.route(host="192.168.1.1").mock(
+            return_value=Response(
+                200,
+                content=b'<response status="success" code="20"><msg>command succeeded</msg></response>',
+            )
+        )
+        yield respx
 
+
+@pytest.fixture
+async def autonomous_graph(mock_panos_client):
+    """Create autonomous graph with mocked httpx client.
+    
     Returns:
         Compiled autonomous StateGraph
     """
-    with patch("src.core.client.get_firewall_client", return_value=mock_firewall):
+    with patch("src.core.client.get_panos_client", return_value=mock_panos_client):
         from src.autonomous_graph import create_autonomous_graph
-
+        
         graph = create_autonomous_graph()
         return graph
 
 
 @pytest.fixture
-def deterministic_graph(mock_firewall):
-    """Create deterministic graph with mocked firewall.
-
+async def deterministic_graph(mock_panos_client):
+    """Create deterministic graph with mocked httpx client.
+    
     Returns:
         Compiled deterministic StateGraph
     """
-    with patch("src.core.client.get_firewall_client", return_value=mock_firewall):
+    with patch("src.core.client.get_panos_client", return_value=mock_panos_client):
         from src.deterministic_graph import create_deterministic_graph
-
+        
         graph = create_deterministic_graph()
         return graph
 
@@ -66,7 +83,7 @@ def deterministic_graph(mock_firewall):
 @pytest.fixture
 def test_thread_id():
     """Generate unique thread ID for test isolation.
-
+    
     Returns:
         UUID string for thread ID
     """
@@ -76,7 +93,7 @@ def test_thread_id():
 @pytest.fixture
 def sample_workflow():
     """Sample workflow definition for deterministic tests.
-
+    
     Returns:
         Dict with workflow steps
     """
@@ -111,4 +128,42 @@ def sample_workflow():
                 },
             },
         ],
+    }
+
+
+@pytest.fixture
+def mock_api_responses():
+    """Mock XML responses for common PAN-OS API operations.
+    
+    Returns:
+        Dict of operation -> mock XML response
+    """
+    return {
+        "success": b'<response status="success" code="20"><msg>command succeeded</msg></response>',
+        "get_config": b'''<response status="success" code="19">
+            <result>
+                <entry name="test-address">
+                    <ip-netmask>10.0.0.1</ip-netmask>
+                    <description>Test address</description>
+                </entry>
+            </result>
+        </response>''',
+        "commit": b'''<response status="success" code="19">
+            <result>
+                <msg>
+                    <line>Commit job enqueued with jobid 123</line>
+                </msg>
+                <job>123</job>
+            </result>
+        </response>''',
+        "job_status": b'''<response status="success">
+            <result>
+                <job>
+                    <id>123</id>
+                    <status>FIN</status>
+                    <result>OK</result>
+                </job>
+            </result>
+        </response>''',
+        "error": b'<response status="error" code="403"><msg>Not Authenticated</msg></response>',
     }

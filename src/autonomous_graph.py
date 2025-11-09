@@ -66,7 +66,7 @@ Use your judgment to complete tasks efficiently while following security best pr
 """
 
 
-def call_agent(
+async def call_agent(
     state: AutonomousState, *, runtime: Runtime[AgentContext], store: BaseStore
 ) -> AutonomousState:
     """Call LLM agent with tools and memory context.
@@ -144,8 +144,8 @@ def call_agent(
         state["messages"]
     )
 
-    # Get response
-    response = llm_with_tools.invoke(messages)
+    # Get response (ainvoke for async)
+    response = await llm_with_tools.ainvoke(messages)
 
     return {"messages": [response]}
 
@@ -173,7 +173,7 @@ def route_after_agent(
     return END
 
 
-def store_operations(state: AutonomousState, *, store: BaseStore) -> AutonomousState:
+async def store_operations(state: AutonomousState, *, store: BaseStore) -> AutonomousState:
     """Store operation results in memory after tool execution.
 
     Extracts tool call results and stores them in the store for future context.

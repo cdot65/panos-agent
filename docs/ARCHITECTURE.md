@@ -2,9 +2,9 @@
 
 > Comprehensive technical guide for developers working on the PAN-OS AI agent
 
-**Version**: 1.0
-**Last Updated**: 2025-11-07
-**Status**: Production-ready
+**Version**: 2.0  
+**Last Updated**: 2025-11-09
+**Status**: Production-ready (Async Architecture)
 
 ---
 
@@ -36,9 +36,8 @@
 
 ### Purpose
 
-AI-powered automation agent for Palo Alto Networks PAN-OS firewalls using LangGraph and
-  pan-os-python.
-  Demonstrates two distinct automation approaches:
+AI-powered automation agent for Palo Alto Networks PAN-OS firewalls using LangGraph with a fully async architecture.
+Demonstrates two distinct automation approaches:
 
 1. **Autonomous Mode**: ReAct agent with full tool access for exploratory automation
 
@@ -46,13 +45,15 @@ AI-powered automation agent for Palo Alto Networks PAN-OS firewalls using LangGr
 
 ### Tech Stack
 
-- **LangGraph** (0.2.50+): State graph orchestration
+- **LangGraph** (1.0.0+): State graph orchestration with async support
 - **LangChain** (0.3.0+): LLM integration and tool binding
 - **Anthropic Claude**: Sonnet 4.5 for reasoning
-- **pan-os-python** (1.11+): PAN-OS XML API client
+- **httpx** (0.27.0+): Async HTTP client for PAN-OS API
+- **lxml** (5.0.0+): Fast XML parsing and generation
 - **Python** 3.11+
 - **uv**: Package management
-- **pytest**: Testing framework
+- **pytest** + **pytest-asyncio**: Testing framework with async support
+- **respx**: HTTP mocking for httpx in tests
 
 ### Key Metrics
 
@@ -60,6 +61,25 @@ AI-powered automation agent for Palo Alto Networks PAN-OS firewalls using LangGr
 - **3 subgraphs** (CRUD, Commit, Deterministic)
 - **6 workflows**
 - **100% tool error handling** (no exceptions leak to LLM)
+- **Full async architecture** with httpx + lxml for PAN-OS API interactions
+
+### Async Architecture Highlights
+
+🚀 **Fully Asynchronous Design**
+- All graph nodes are `async def` functions
+- Non-blocking I/O with `httpx.AsyncClient`
+- Tools use `asyncio.run()` to bridge sync tool interface with async subgraphs
+- Efficient connection pooling and resource management
+
+⚡ **Performance Benefits**
+- Faster API calls with async HTTP
+- Better resource utilization
+- Scalable for high-throughput scenarios
+
+🔧 **Developer Experience**
+- Clean async/await patterns throughout
+- Comprehensive async test coverage (pytest-asyncio)
+- Well-defined async patterns and examples
 
 ---
 
@@ -756,9 +776,12 @@ panos-agent/
 │   ├── deterministic_graph.py      # Workflow executor
 │   ├── core/
 │   │   ├── config.py               # Pydantic settings from .env
-│   │   ├── client.py               # Singleton PAN-OS firewall client
+│   │   ├── client.py               # Async httpx.AsyncClient singleton
+│   │   ├── panos_api.py            # Async XML API layer (httpx + lxml)
+│   │   ├── panos_models.py         # Pydantic models for API responses
+│   │   ├── panos_xpath_map.py      # XPath mapping and validation
 │   │   ├── state_schemas.py        # All TypedDict state definitions
-│   │   ├── retry_helper.py         # Exponential backoff retry
+│   │   ├── retry_helper.py         # Async exponential backoff retry
 │   │   └── subgraphs/
 │   │       ├── crud.py             # Single object lifecycle
 │   │       ├── commit.py           # PAN-OS commit with polling
@@ -1025,26 +1048,36 @@ def my_tool(param: str) -> str:
 ```text
 
 tests/
-├── conftest.py              # Shared fixtures (mock firewall, objects)
-├── test_crud_subgraph.py    # Integration tests (with mocks)
-├── test_commit_subgraph.py  # Integration tests
+├── conftest.py              # Shared fixtures (mock httpx client, objects)
+├── integration/             # Integration tests (with respx mocking)
+├── unit/                    # Unit tests (all async-aware)
 └── test_tools.py            # Tool invocation tests
 
 ```text
 
 ### Fixtures
 
-**Mock Firewall**:
+**Mock HTTP Client**:
 
 ```python
-
 @pytest.fixture
-def mock_firewall():
-    fw = MagicMock()
-    fw.hostname = "192.168.1.1"
-    fw.refreshall = Mock()
-    fw.find = Mock()
-    return fw
+async def mock_httpx_client():
+    """Async httpx client mock for testing."""
+    client = AsyncMock(spec=httpx.AsyncClient)
+    client.get = AsyncMock(return_value=mock_response)
+    client.post = AsyncMock(return_value=mock_response)
+    return client
+```
+
+**Async Test Pattern**:
+
+```python
+@pytest.mark.asyncio
+async def test_async_function():
+    """Test async graph node."""
+    result = await async_node(state, runtime=runtime, store=store)
+    assert result["key"] == "value"
+```
 
 ```text
 

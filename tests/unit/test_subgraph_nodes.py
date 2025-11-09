@@ -23,7 +23,8 @@ from src.core.state_schemas import CRUDState, CommitState, DeterministicWorkflow
 class TestCRUDSubgraph:
     """Tests for CRUD subgraph nodes."""
 
-    def test_validate_input_success_create(self):
+    @pytest.mark.asyncio
+    async def test_validate_input_success_create(self):
         """Test validation passes for valid create operation."""
         state: CRUDState = {
             "operation_type": "create",
@@ -42,7 +43,8 @@ class TestCRUDSubgraph:
         assert result["validation_result"] == "✅ Validation passed"
         assert result["error"] is None
 
-    def test_validate_input_missing_data_for_create(self):
+    @pytest.mark.asyncio
+    async def test_validate_input_missing_data_for_create(self):
         """Test validation fails when data missing for create."""
         state: CRUDState = {
             "operation_type": "create",
@@ -61,7 +63,8 @@ class TestCRUDSubgraph:
         assert "Missing required 'data' field" in result["validation_result"]
         assert result["error"] is not None
 
-    def test_validate_input_missing_object_name_for_read(self):
+    @pytest.mark.asyncio
+    async def test_validate_input_missing_object_name_for_read(self):
         """Test validation fails when object_name missing for read."""
         state: CRUDState = {
             "operation_type": "read",
@@ -80,7 +83,8 @@ class TestCRUDSubgraph:
         assert "Missing required 'object_name' field" in result["validation_result"]
         assert result["error"] is not None
 
-    def test_validate_input_unsupported_object_type(self):
+    @pytest.mark.asyncio
+    async def test_validate_input_unsupported_object_type(self):
         """Test validation fails for unsupported object type."""
         state: CRUDState = {
             "operation_type": "create",
@@ -205,7 +209,8 @@ class TestCRUDSubgraph:
 class TestCommitSubgraph:
     """Tests for Commit subgraph nodes."""
 
-    def test_validate_commit_input_success(self):
+    @pytest.mark.asyncio
+    async def test_validate_commit_input_success(self):
         """Test validation passes for valid commit."""
         state: CommitState = {
             "description": "Test commit",
@@ -224,7 +229,8 @@ class TestCommitSubgraph:
 
         assert "✅" in result["message"] or result["error"] is None
 
-    def test_check_approval_not_required_by_default(self):
+    @pytest.mark.asyncio
+    async def test_check_approval_not_required_by_default(self):
         """Test that approval is not required by default."""
         state: CommitState = {
             "description": "Normal commit",
@@ -242,7 +248,8 @@ class TestCommitSubgraph:
         # When require_approval is False or not set, approval_granted should be True
         assert result.get("approval_granted") is True
 
-    def test_check_approval_not_required_when_force_false(self):
+    @pytest.mark.asyncio
+    async def test_check_approval_not_required_when_force_false(self):
         """Test that approval not required when force=False."""
         state: CommitState = {
             "description": "Normal commit",

@@ -26,7 +26,7 @@ except ImportError:
     WORKFLOWS = {}
 
 
-def load_workflow_definition(state: DeterministicState) -> DeterministicState:
+async def load_workflow_definition(state: DeterministicState) -> DeterministicState:
     """Load workflow definition from user message.
 
     Extracts workflow name from last message and loads definition.
@@ -84,7 +84,7 @@ def load_workflow_definition(state: DeterministicState) -> DeterministicState:
     }
 
 
-def execute_workflow(state: DeterministicState, *, store: BaseStore) -> DeterministicState:
+async def execute_workflow(state: DeterministicState, *, store: BaseStore) -> DeterministicState:
     """Execute workflow using deterministic workflow subgraph.
 
     Stores workflow execution history in memory after completion.
@@ -114,9 +114,9 @@ def execute_workflow(state: DeterministicState, *, store: BaseStore) -> Determin
     execution_id = str(uuid.uuid4())
     started_at = datetime.utcnow().isoformat() + "Z"
 
-    # Invoke workflow subgraph
+    # Invoke workflow subgraph (async)
     try:
-        result = workflow_subgraph.invoke(
+        result = await workflow_subgraph.ainvoke(
             {
                 "workflow_name": workflow_name,
                 "workflow_params": {},  # Could extract from user message

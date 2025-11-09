@@ -4,11 +4,14 @@ Classifies errors as transient (retryable) vs permanent (fail-fast).
 Adapted from SCM agent retry patterns for PAN-OS XML API.
 """
 
+import asyncio
 import logging
 import time
 from typing import Any, Callable, Optional
 
-from panos.errors import PanConnectionTimeout, PanDeviceError, PanURLError
+import httpx
+
+from src.core.panos_api import PanOSAPIError, PanOSConnectionError
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +32,7 @@ def classify_panos_error(error: Exception) -> type[Exception]:
     """Classify PAN-OS error as transient or permanent.
 
     Args:
-        error: Exception from pan-os-python operation
+        error: Exception from PAN-OS API operation
 
     Returns:
         RetryableError if transient, PermanentError if not retryable
@@ -37,10 +40,21 @@ def classify_panos_error(error: Exception) -> type[Exception]:
     error_str = str(error).lower()
 
     # Transient errors (network/timeout issues)
-    if isinstance(error, (PanConnectionTimeout, PanURLError)):
+    if isinstance(error, (PanOSConnectionError, httpx.TimeoutException, httpx.ConnectError)):
         return RetryableError
 
-    if isinstance(error, PanDeviceError):
+    # HTTP errors - check status codes
+    if isinstance(error, httpx.HTTPStatusError):
+        # 5xx errors are typically transient (server issues)
+        if 500 <= error.response.status_code < 600:
+            return RetryableError
+        # 429 rate limit - transient
+        if error.response.status_code == 429:
+            return RetryableError
+        # 4xx errors are typically permanent (client errors)
+        return PermanentError
+
+    if isinstance(error, PanOSAPIError):
         # Check error message for transient indicators
         transient_indicators = [
             "timeout",
@@ -49,6 +63,7 @@ def classify_panos_error(error: Exception) -> type[Exception]:
             "try again",
             "rate limit",
             "too many requests",
+            "busy",
         ]
 
         for indicator in transient_indicators:
@@ -64,6 +79,7 @@ def classify_panos_error(error: Exception) -> type[Exception]:
             "duplicate",
             "malformed",
             "permission denied",
+            "unauthorized",
         ]
 
         for indicator in permanent_indicators:
@@ -137,7 +153,7 @@ def with_retry(
     raise last_error or Exception("Unknown error in retry logic")
 
 
-def with_retry_async(
+async def with_retry_async(
     operation: Callable[..., Any],
     *args: Any,
     max_retries: int = 3,
@@ -146,9 +162,55 @@ def with_retry_async(
     backoff_factor: float = 2.0,
     **kwargs: Any,
 ) -> Any:
-    """Async version of with_retry.
+    """Execute async operation with exponential backoff retry.
 
-    TODO: Implement async retry logic if needed for async operations.
-    Currently pan-os-python is synchronous, so this is a placeholder.
+    Args:
+        operation: Async function to execute
+        *args: Positional arguments for operation
+        max_retries: Maximum retry attempts (default 3)
+        initial_delay: Initial delay in seconds (default 1.0)
+        max_delay: Maximum delay in seconds (default 10.0)
+        backoff_factor: Multiplier for delay (default 2.0)
+        **kwargs: Keyword arguments for operation
+
+    Returns:
+        Result from operation
+
+    Raises:
+        PermanentError: If error is not retryable
+        Exception: If max retries exceeded
     """
-    raise NotImplementedError("Async retry not yet implemented")
+    last_error: Optional[Exception] = None
+    delay = initial_delay
+
+    for attempt in range(max_retries + 1):
+        try:
+            result = await operation(*args, **kwargs)
+            if attempt > 0:
+                logger.info(f"Operation succeeded after {attempt} retries")
+            return result
+
+        except Exception as e:
+            last_error = e
+            error_class = classify_panos_error(e)
+
+            # Don't retry permanent errors
+            if error_class == PermanentError:
+                logger.error(f"Permanent error (not retrying): {type(e).__name__}: {e}")
+                raise PermanentError(str(e)) from e
+
+            # Last attempt - raise original error
+            if attempt >= max_retries:
+                logger.error(f"Max retries ({max_retries}) exceeded: {type(e).__name__}: {e}")
+                raise
+
+            # Retry with backoff
+            logger.warning(
+                f"Attempt {attempt + 1}/{max_retries} failed: {type(e).__name__}: {e}. "
+                f"Retrying in {delay:.1f}s..."
+            )
+            await asyncio.sleep(delay)
+            delay = min(delay * backoff_factor, max_delay)
+
+    # Should never reach here
+    raise last_error or Exception("Unknown error in retry logic")

@@ -48,14 +48,18 @@ def address_group_create(
         data["tag"] = tag
 
     try:
-        result = crud_graph.invoke(
-            {
-                "operation_type": "create",
-                "object_type": "address_group",
-                "data": data,
-                "object_name": name,
-            },
-            config={"configurable": {"thread_id": str(uuid.uuid4())}},
+        import asyncio
+
+        result = asyncio.run(
+            crud_graph.ainvoke(
+                {
+                    "operation_type": "create",
+                    "object_type": "address_group",
+                    "data": data,
+                    "object_name": name,
+                },
+                config={"configurable": {"thread_id": str(uuid.uuid4())}},
+            )
         )
         return result["message"]
     except Exception as e:
@@ -78,14 +82,18 @@ def address_group_read(name: str) -> str:
     crud_graph = create_crud_subgraph()
 
     try:
-        result = crud_graph.invoke(
-            {
-                "operation_type": "read",
-                "object_type": "address_group",
-                "object_name": name,
-                "data": None,
-            },
-            config={"configurable": {"thread_id": str(uuid.uuid4())}},
+        import asyncio
+
+        result = asyncio.run(
+            crud_graph.ainvoke(
+                {
+                    "operation_type": "read",
+                    "object_type": "address_group",
+                    "object_name": name,
+                    "data": None,
+                },
+                config={"configurable": {"thread_id": str(uuid.uuid4())}},
+            )
         )
         return result["message"]
     except Exception as e:
@@ -127,14 +135,18 @@ def address_group_update(
         return "❌ Error: No fields provided for update"
 
     try:
-        result = crud_graph.invoke(
-            {
-                "operation_type": "update",
-                "object_type": "address_group",
-                "object_name": name,
-                "data": data,
-            },
-            config={"configurable": {"thread_id": str(uuid.uuid4())}},
+        import asyncio
+
+        result = asyncio.run(
+            crud_graph.ainvoke(
+                {
+                    "operation_type": "update",
+                    "object_type": "address_group",
+                    "object_name": name,
+                    "data": data,
+                },
+                config={"configurable": {"thread_id": str(uuid.uuid4())}},
+            )
         )
         return result["message"]
     except Exception as e:
@@ -157,14 +169,18 @@ def address_group_delete(name: str) -> str:
     crud_graph = create_crud_subgraph()
 
     try:
-        result = crud_graph.invoke(
-            {
-                "operation_type": "delete",
-                "object_type": "address_group",
-                "object_name": name,
-                "data": None,
-            },
-            config={"configurable": {"thread_id": str(uuid.uuid4())}},
+        import asyncio
+
+        result = asyncio.run(
+            crud_graph.ainvoke(
+                {
+                    "operation_type": "delete",
+                    "object_type": "address_group",
+                    "object_name": name,
+                    "data": None,
+                },
+                config={"configurable": {"thread_id": str(uuid.uuid4())}},
+            )
         )
         return result["message"]
     except Exception as e:
@@ -184,14 +200,18 @@ def address_group_list() -> str:
     crud_graph = create_crud_subgraph()
 
     try:
-        result = crud_graph.invoke(
-            {
-                "operation_type": "list",
-                "object_type": "address_group",
-                "object_name": None,
-                "data": None,
-            },
-            config={"configurable": {"thread_id": str(uuid.uuid4())}},
+        import asyncio
+
+        result = asyncio.run(
+            crud_graph.ainvoke(
+                {
+                    "operation_type": "list",
+                    "object_type": "address_group",
+                    "object_name": None,
+                    "data": None,
+                },
+                config={"configurable": {"thread_id": str(uuid.uuid4())}},
+            )
         )
         return result["message"]
     except Exception as e:

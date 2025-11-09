@@ -2,7 +2,7 @@
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from langgraph.graph import END
 
 from src.autonomous_graph import call_agent, route_after_agent
@@ -13,10 +13,11 @@ from src.core.config import AgentContext
 class TestCallAgent:
     """Tests for call_agent node."""
 
+    @pytest.mark.asyncio
     @patch("src.autonomous_graph.ChatAnthropic")
     @patch("src.autonomous_graph.get_settings")
     @patch("src.autonomous_graph.get_firewall_operation_summary")
-    def test_call_agent_returns_response(
+    async def test_call_agent_returns_response(
         self, mock_get_summary, mock_settings, mock_chat_anthropic
     ):
         """Test that call_agent returns AIMessage response."""
@@ -26,7 +27,7 @@ class TestCallAgent:
         mock_get_summary.return_value = {}  # No memory context
         mock_llm = Mock()
         mock_response = AIMessage(content="I'll list the address objects for you.")
-        mock_llm.invoke.return_value = mock_response
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
         mock_chat_anthropic.return_value.bind_tools.return_value = mock_llm
 
         # Create state and runtime context
@@ -36,7 +37,7 @@ class TestCallAgent:
         store = Mock()
 
         # Call function
-        result = call_agent(state, runtime=runtime, store=store)
+        result = await call_agent(state, runtime=runtime, store=store)
 
         # Assertions
         assert "messages" in result
@@ -44,10 +45,11 @@ class TestCallAgent:
         assert isinstance(result["messages"][0], AIMessage)
         assert result["messages"][0].content == "I'll list the address objects for you."
 
+    @pytest.mark.asyncio
     @patch("src.autonomous_graph.ChatAnthropic")
     @patch("src.autonomous_graph.get_settings")
     @patch("src.autonomous_graph.get_firewall_operation_summary")
-    def test_call_agent_with_tool_call(
+    async def test_call_agent_with_tool_call(
         self, mock_get_summary, mock_settings, mock_chat_anthropic
     ):
         """Test that call_agent handles tool calls."""
@@ -60,7 +62,7 @@ class TestCallAgent:
             content="",
             tool_calls=[{"name": "address_list", "args": {}, "id": "call_123"}],
         )
-        mock_llm.invoke.return_value = mock_response
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
         mock_chat_anthropic.return_value.bind_tools.return_value = mock_llm
 
         # Create state and runtime context
@@ -70,7 +72,7 @@ class TestCallAgent:
         store = Mock()
 
         # Call function
-        result = call_agent(state, runtime=runtime, store=store)
+        result = await call_agent(state, runtime=runtime, store=store)
 
         # Assertions
         assert "messages" in result
@@ -79,10 +81,11 @@ class TestCallAgent:
         assert len(result["messages"][0].tool_calls) == 1
         assert result["messages"][0].tool_calls[0]["name"] == "address_list"
 
+    @pytest.mark.asyncio
     @patch("src.autonomous_graph.ChatAnthropic")
     @patch("src.autonomous_graph.get_settings")
     @patch("src.autonomous_graph.get_firewall_operation_summary")
-    def test_call_agent_prepends_system_message(
+    async def test_call_agent_prepends_system_message(
         self, mock_get_summary, mock_settings, mock_chat_anthropic
     ):
         """Test that call_agent prepends system message to conversation."""
@@ -92,7 +95,7 @@ class TestCallAgent:
         mock_get_summary.return_value = {}
         mock_llm = Mock()
         mock_response = AIMessage(content="Response")
-        mock_llm.invoke.return_value = mock_response
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
         mock_chat_anthropic.return_value.bind_tools.return_value = mock_llm
 
         # Create state and runtime context
@@ -102,11 +105,11 @@ class TestCallAgent:
         store = Mock()
 
         # Call function
-        call_agent(state, runtime=runtime, store=store)
+        await call_agent(state, runtime=runtime, store=store)
 
         # Verify LLM was called with system message prepended
-        assert mock_llm.invoke.called
-        call_args = mock_llm.invoke.call_args[0][0]
+        assert mock_llm.ainvoke.called
+        call_args = mock_llm.ainvoke.call_args[0][0]
         assert len(call_args) == 2  # System message + user message
         assert "autonomous mode" in call_args[0].content.lower()
 
@@ -192,10 +195,11 @@ class TestRouteAfterAgent:
 class TestCallAgentRuntimeContext:
     """Tests for call_agent with runtime context."""
 
+    @pytest.mark.asyncio
     @patch("src.autonomous_graph.ChatAnthropic")
     @patch("src.autonomous_graph.get_settings")
     @patch("src.autonomous_graph.get_firewall_operation_summary")
-    def test_call_agent_uses_runtime_model_name(
+    async def test_call_agent_uses_runtime_model_name(
         self, mock_get_summary, mock_settings, mock_chat_anthropic
     ):
         """Test that call_agent uses model_name from runtime context."""
@@ -205,7 +209,7 @@ class TestCallAgentRuntimeContext:
         mock_get_summary.return_value = {}
         mock_llm = Mock()
         mock_response = AIMessage(content="Done")
-        mock_llm.invoke.return_value = mock_response
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
         mock_chat_anthropic.return_value.bind_tools.return_value = mock_llm
 
         # Create state and runtime context with custom model
@@ -215,7 +219,7 @@ class TestCallAgentRuntimeContext:
         store = Mock()
 
         # Call function
-        call_agent(state, runtime=runtime, store=store)
+        await call_agent(state, runtime=runtime, store=store)
 
         # Verify ChatAnthropic was called with runtime model name
         assert mock_chat_anthropic.called
@@ -225,7 +229,8 @@ class TestCallAgentRuntimeContext:
     @patch("src.autonomous_graph.ChatAnthropic")
     @patch("src.autonomous_graph.get_settings")
     @patch("src.autonomous_graph.get_firewall_operation_summary")
-    def test_call_agent_uses_runtime_temperature(
+    @pytest.mark.asyncio
+    async def test_call_agent_uses_runtime_temperature(
         self, mock_get_summary, mock_settings, mock_chat_anthropic
     ):
         """Test that call_agent uses temperature from runtime context."""
@@ -235,7 +240,7 @@ class TestCallAgentRuntimeContext:
         mock_get_summary.return_value = {}
         mock_llm = Mock()
         mock_response = AIMessage(content="Done")
-        mock_llm.invoke.return_value = mock_response
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
         mock_chat_anthropic.return_value.bind_tools.return_value = mock_llm
 
         # Create state and runtime context with custom temperature
@@ -245,7 +250,7 @@ class TestCallAgentRuntimeContext:
         store = Mock()
 
         # Call function
-        call_agent(state, runtime=runtime, store=store)
+        await call_agent(state, runtime=runtime, store=store)
 
         # Verify ChatAnthropic was called with runtime temperature
         assert mock_chat_anthropic.called
@@ -255,7 +260,8 @@ class TestCallAgentRuntimeContext:
     @patch("src.autonomous_graph.ChatAnthropic")
     @patch("src.autonomous_graph.get_settings")
     @patch("src.autonomous_graph.get_firewall_operation_summary")
-    def test_call_agent_uses_runtime_max_tokens(
+    @pytest.mark.asyncio
+    async def test_call_agent_uses_runtime_max_tokens(
         self, mock_get_summary, mock_settings, mock_chat_anthropic
     ):
         """Test that call_agent uses max_tokens from runtime context."""
@@ -265,7 +271,7 @@ class TestCallAgentRuntimeContext:
         mock_get_summary.return_value = {}
         mock_llm = Mock()
         mock_response = AIMessage(content="Done")
-        mock_llm.invoke.return_value = mock_response
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
         mock_chat_anthropic.return_value.bind_tools.return_value = mock_llm
 
         # Create state and runtime context with custom max_tokens
@@ -275,7 +281,7 @@ class TestCallAgentRuntimeContext:
         store = Mock()
 
         # Call function
-        call_agent(state, runtime=runtime, store=store)
+        await call_agent(state, runtime=runtime, store=store)
 
         # Verify ChatAnthropic was called with runtime max_tokens
         assert mock_chat_anthropic.called
@@ -285,7 +291,8 @@ class TestCallAgentRuntimeContext:
     @patch("src.autonomous_graph.ChatAnthropic")
     @patch("src.autonomous_graph.get_settings")
     @patch("src.autonomous_graph.get_firewall_operation_summary")
-    def test_call_agent_with_all_runtime_params(
+    @pytest.mark.asyncio
+    async def test_call_agent_with_all_runtime_params(
         self, mock_get_summary, mock_settings, mock_chat_anthropic
     ):
         """Test that call_agent uses all parameters from runtime context."""
@@ -295,7 +302,7 @@ class TestCallAgentRuntimeContext:
         mock_get_summary.return_value = {}
         mock_llm = Mock()
         mock_response = AIMessage(content="Done")
-        mock_llm.invoke.return_value = mock_response
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
         mock_chat_anthropic.return_value.bind_tools.return_value = mock_llm
 
         # Create state and runtime context with all custom values
@@ -309,7 +316,7 @@ class TestCallAgentRuntimeContext:
         store = Mock()
 
         # Call function
-        call_agent(state, runtime=runtime, store=store)
+        await call_agent(state, runtime=runtime, store=store)
 
         # Verify ChatAnthropic was called with all runtime parameters
         assert mock_chat_anthropic.called
@@ -321,7 +328,8 @@ class TestCallAgentRuntimeContext:
     @patch("src.autonomous_graph.ChatAnthropic")
     @patch("src.autonomous_graph.get_settings")
     @patch("src.autonomous_graph.get_firewall_operation_summary")
-    def test_call_agent_haiku_configuration(
+    @pytest.mark.asyncio
+    async def test_call_agent_haiku_configuration(
         self, mock_get_summary, mock_settings, mock_chat_anthropic
     ):
         """Test call_agent with Haiku model for fast operations."""
@@ -331,7 +339,7 @@ class TestCallAgentRuntimeContext:
         mock_get_summary.return_value = {}
         mock_llm = Mock()
         mock_response = AIMessage(content="Done")
-        mock_llm.invoke.return_value = mock_response
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
         mock_chat_anthropic.return_value.bind_tools.return_value = mock_llm
 
         # Create state and runtime context for Haiku
@@ -343,7 +351,7 @@ class TestCallAgentRuntimeContext:
         store = Mock()
 
         # Call function
-        call_agent(state, runtime=runtime, store=store)
+        await call_agent(state, runtime=runtime, store=store)
 
         # Verify Haiku configuration
         call_kwargs = mock_chat_anthropic.call_args[1]
@@ -353,7 +361,8 @@ class TestCallAgentRuntimeContext:
     @patch("src.autonomous_graph.ChatAnthropic")
     @patch("src.autonomous_graph.get_settings")
     @patch("src.autonomous_graph.get_firewall_operation_summary")
-    def test_call_agent_opus_configuration(
+    @pytest.mark.asyncio
+    async def test_call_agent_opus_configuration(
         self, mock_get_summary, mock_settings, mock_chat_anthropic
     ):
         """Test call_agent with Opus model for complex operations."""
@@ -363,7 +372,7 @@ class TestCallAgentRuntimeContext:
         mock_get_summary.return_value = {}
         mock_llm = Mock()
         mock_response = AIMessage(content="Done")
-        mock_llm.invoke.return_value = mock_response
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
         mock_chat_anthropic.return_value.bind_tools.return_value = mock_llm
 
         # Create state and runtime context for Opus
@@ -379,7 +388,7 @@ class TestCallAgentRuntimeContext:
         store = Mock()
 
         # Call function
-        call_agent(state, runtime=runtime, store=store)
+        await call_agent(state, runtime=runtime, store=store)
 
         # Verify Opus configuration
         call_kwargs = mock_chat_anthropic.call_args[1]

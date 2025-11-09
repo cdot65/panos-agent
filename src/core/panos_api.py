@@ -69,6 +69,10 @@ def build_xpath(
     """
     from src.core.panos_models import DeviceType
 
+    # Normalize object_type: convert underscores to hyphens for XML compatibility
+    # Allows tools to use Python naming (address_group) while using XML naming (address-group)
+    object_type = object_type.replace("_", "-")
+
     # Determine device type and context from device_context or defaults
     device_type = DeviceType.FIREWALL
     vsys = location  # Default to provided location

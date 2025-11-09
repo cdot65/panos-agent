@@ -191,6 +191,11 @@ async def validate_input(state: CRUDState) -> CRUDState:
     """
     from src.core.panos_xpath_map import PanOSXPathMap, validate_object_data
 
+    # Normalize object_type: convert underscores to hyphens BEFORE validation
+    # This allows tools to use Python naming (address_group) while validating XML naming
+    if "object_type" in state:
+        state = {**state, "object_type": state["object_type"].replace("_", "-")}
+
     logger.debug(f"Validating {state['operation_type']} for {state['object_type']}")
 
     # Check required fields
@@ -389,6 +394,9 @@ def build_object_xml(object_type: str, data: dict[str, Any]) -> etree._Element:
     Returns:
         lxml Element
     """
+    # Normalize object_type: convert underscores to hyphens for XML compatibility
+    object_type = object_type.replace("_", "-")
+
     name = data.get("name", "")
     entry = etree.Element("entry", name=name)
 
@@ -410,9 +418,9 @@ def build_object_xml(object_type: str, data: dict[str, Any]) -> etree._Element:
 
     elif object_type == "address-group":
         # Address group
-        if data.get("static_members"):
+        if data.get("static_value"):
             static_elem = etree.SubElement(entry, "static")
-            for member in data["static_members"]:
+            for member in data["static_value"]:
                 member_elem = etree.SubElement(static_elem, "member")
                 member_elem.text = member
 
@@ -595,7 +603,10 @@ async def create_object(state: CRUDState) -> CRUDState:
                             "reason": "exists_with_changes",
                             "diff": diff.to_dict(),
                         },
-                        "message": f"⏭️  Skipped: {state['object_type']} '{object_name}' exists with different config\n{diff_summary}",
+                        "message": (
+                            f"⏭️  Skipped: {state['object_type']} '{object_name}' "
+                            f"exists with different config\n{diff_summary}"
+                        ),
                     }
             except Exception as e:
                 # If diff comparison fails, fall back to simple skip
@@ -608,7 +619,10 @@ async def create_object(state: CRUDState) -> CRUDState:
                         "object_type": state["object_type"],
                         "reason": "already_exists",
                     },
-                    "message": f"⏭️  Skipped: {state['object_type']} '{object_name}' already exists",
+                    "message": (
+                        f"⏭️  Skipped: {state['object_type']} '{object_name}' "
+                        "already exists"
+                    ),
                 }
         # Strict mode - fail if exists (only when explicitly requested)
         return {
@@ -991,12 +1005,15 @@ async def list_objects(state: CRUDState) -> CRUDState:
         # Get all objects
         result = await get_config(xpath, client)
 
-        # Parse entries
+        # Parse entries with full details
         object_list = []
         for entry in result.findall(".//entry"):
             name = entry.get("name", "")
             if name:
-                object_list.append({"name": name})
+                # Parse full entry to dict for complete object details
+                obj_dict = parse_xml_to_dict(entry)
+                obj_dict["name"] = name  # Ensure name is included
+                object_list.append(obj_dict)
 
         return {
             **state,
@@ -1058,13 +1075,113 @@ async def format_response(state: CRUDState) -> CRUDState:
                 # Check if diff available
                 if result.get("diff"):
                     change_count = len(result["diff"].get("changes", []))
-                    message = f"✅ Updated {state['object_type']}: {result.get('name')} ({change_count} changes)"
+                    message = (
+                        f"✅ Updated {state['object_type']}: {result.get('name')} "
+                        f"({change_count} changes)"
+                    )
                 else:
                     message = f"✅ Updated {state['object_type']}: {result.get('name')}"
             elif state["operation_type"] == "delete":
                 message = f"✅ Deleted {state['object_type']}: {result.get('name')}"
             elif state["operation_type"] == "list":
-                message = f"✅ Found {result.get('count')} {state['object_type']} objects"
+                count = result.get('count', 0)
+                objects = result.get('objects', [])
+
+                if count == 0:
+                    message = f"✅ No {state['object_type']} objects found"
+                else:
+                    # Format as table with object details
+                    lines = [f"✅ Found {count} {state['object_type']} objects:\n"]
+
+                    # Determine columns based on object type
+                    if state['object_type'] == 'address':
+                        lines.append(f"{'Name':<30} {'Type':<15} {'Value':<40}")
+                        lines.append("-" * 85)
+                        for obj in objects:
+                            name = obj.get('name', 'N/A')
+                            # Determine type and value
+                            if 'ip-netmask' in obj:
+                                obj_type = 'ip-netmask'
+                                value = obj['ip-netmask']
+                            elif 'ip-range' in obj:
+                                obj_type = 'ip-range'
+                                value = obj['ip-range']
+                            elif 'fqdn' in obj:
+                                obj_type = 'fqdn'
+                                value = obj['fqdn']
+                            else:
+                                obj_type = 'unknown'
+                                value = str(obj)[:40]
+
+                            lines.append(f"{name:<30} {obj_type:<15} {value:<40}")
+
+                    elif state['object_type'] == 'address-group':
+                        lines.append(f"{'Name':<30} {'Type':<15} {'Members':<50}")
+                        lines.append("-" * 95)
+                        for obj in objects:
+                            name = obj.get('name', 'N/A')
+                            # Determine type (static vs dynamic)
+                            if 'static' in obj:
+                                group_type = 'static'
+                                members = obj['static'].get('member', [])
+                                if isinstance(members, str):
+                                    members = [members]
+                                member_str = ', '.join(members[:3])
+                                if len(members) > 3:
+                                    member_str += f" (+{len(members)-3} more)"
+                            elif 'dynamic' in obj:
+                                group_type = 'dynamic'
+                                member_str = obj['dynamic'].get('filter', 'N/A')
+                            else:
+                                group_type = 'unknown'
+                                member_str = 'N/A'
+
+                            lines.append(f"{name:<30} {group_type:<15} {member_str:<50}")
+
+                    elif state['object_type'] == 'service':
+                        lines.append(f"{'Name':<30} {'Protocol':<15} {'Port':<20}")
+                        lines.append("-" * 65)
+                        for obj in objects:
+                            name = obj.get('name', 'N/A')
+                            protocol = obj.get('protocol', {})
+                            if 'tcp' in protocol:
+                                proto = 'tcp'
+                                port = protocol['tcp'].get('port', 'N/A')
+                            elif 'udp' in protocol:
+                                proto = 'udp'
+                                port = protocol['udp'].get('port', 'N/A')
+                            else:
+                                proto = 'unknown'
+                                port = 'N/A'
+
+                            lines.append(f"{name:<30} {proto:<15} {port:<20}")
+
+                    elif state['object_type'] == 'service-group':
+                        lines.append(f"{'Name':<30} {'Members':<60}")
+                        lines.append("-" * 90)
+                        for obj in objects:
+                            name = obj.get('name', 'N/A')
+                            members = obj.get('members', {}).get('member', [])
+                            if isinstance(members, str):
+                                members = [members]
+                            member_str = ', '.join(members[:4])
+                            if len(members) > 4:
+                                member_str += f" (+{len(members)-4} more)"
+
+                            lines.append(f"{name:<30} {member_str:<60}")
+
+                    else:
+                        # Generic format for other object types
+                        lines.append(f"{'Name':<40} {'Details':<60}")
+                        lines.append("-" * 100)
+                        for obj in objects:
+                            name = obj.get('name', 'N/A')
+                            # Remove name from dict copy for details
+                            details = {k: v for k, v in obj.items() if k != 'name'}
+                            details_str = str(details)[:60]
+                            lines.append(f"{name:<40} {details_str:<60}")
+
+                    message = "\n".join(lines)
         elif status == "skipped":
             reason = result.get("reason")
             if reason == "unchanged":

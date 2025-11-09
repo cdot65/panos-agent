@@ -3,7 +3,7 @@
 Tests full workflow execution from definition to completion.
 """
 
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from langchain_core.messages import HumanMessage
@@ -17,19 +17,19 @@ class TestDeterministicGraphExecution:
         self, deterministic_graph, test_thread_id, sample_workflow
     ):
         """Test simple 2-step workflow executes successfully."""
-        # Mock successful tool execution
+        # Mock successful tool execution (async)
         with patch("src.tools.orchestration.crud_operations.crud_operation") as mock_crud:
-            mock_crud.invoke.side_effect = [
+            mock_crud.ainvoke = AsyncMock(side_effect=[
                 "✅ Created address: test-server",
                 "✅ Retrieved address: test-server",
-            ]
+            ])
 
-            # Execute workflow
+            # Execute workflow - pass workflow_steps directly since we're bypassing WORKFLOWS lookup
             result = await deterministic_graph.ainvoke(
                 {
                     "messages": [HumanMessage(content="workflow: test_workflow")],
                     "workflow_name": "test_workflow",
-                    "steps": sample_workflow["steps"],
+                    "workflow_steps": sample_workflow["steps"],  # Use workflow_steps instead of steps
                 },
                 config={"configurable": {"thread_id": test_thread_id}},
             )
@@ -50,19 +50,19 @@ class TestDeterministicGraphExecution:
         self, deterministic_graph, test_thread_id, sample_workflow
     ):
         """Test workflow handles step failure gracefully."""
-        # Mock first step success, second step failure
+        # Mock first step success, second step failure (async)
         with patch("src.tools.orchestration.crud_operations.crud_operation") as mock_crud:
-            mock_crud.invoke.side_effect = [
+            mock_crud.ainvoke = AsyncMock(side_effect=[
                 "✅ Created address: test-server",
                 "❌ Error: Object not found",
-            ]
+            ])
 
-            # Execute workflow
+            # Execute workflow - pass workflow_steps directly
             result = await deterministic_graph.ainvoke(
                 {
                     "messages": [HumanMessage(content="workflow: test_workflow")],
                     "workflow_name": "test_workflow",
-                    "steps": sample_workflow["steps"],
+                    "workflow_steps": sample_workflow["steps"],  # Use workflow_steps instead of steps
                 },
                 config={"configurable": {"thread_id": test_thread_id}},
             )
@@ -83,14 +83,14 @@ class TestDeterministicGraphExecution:
     ):
         """Test workflow state updates correctly."""
         with patch("src.tools.orchestration.crud_operations.crud_operation") as mock_crud:
-            mock_crud.invoke.return_value = "✅ Success"
+            mock_crud.ainvoke = AsyncMock(return_value="✅ Success")
 
-            # Execute workflow
+            # Execute workflow - pass workflow_steps directly
             result = await deterministic_graph.ainvoke(
                 {
                     "messages": [HumanMessage(content="workflow: test_workflow")],
                     "workflow_name": "test_workflow",
-                    "steps": sample_workflow["steps"],
+                    "workflow_steps": sample_workflow["steps"],  # Use workflow_steps instead of steps
                 },
                 config={"configurable": {"thread_id": test_thread_id}},
             )
@@ -136,7 +136,7 @@ class TestDeterministicGraphCheckpointing:
     ):
         """Test workflow state is checkpointed."""
         with patch("src.tools.orchestration.crud_operations.crud_operation") as mock_crud:
-            mock_crud.invoke.return_value = "✅ Success"
+            mock_crud.ainvoke = AsyncMock(return_value="✅ Success")
 
             # Execute workflow
             await deterministic_graph.ainvoke(
@@ -148,9 +148,9 @@ class TestDeterministicGraphCheckpointing:
                 config={"configurable": {"thread_id": test_thread_id}},
             )
 
-        # Get state
+        # Get state (async checkpointer requires async get_state)
         config = {"configurable": {"thread_id": test_thread_id}}
-        state = deterministic_graph.get_state(config)
+        state = await deterministic_graph.aget_state(config)
 
         # Verify checkpoint
         assert state is not None
@@ -189,14 +189,14 @@ class TestDeterministicGraphCheckpointing:
         }
 
         with patch("src.tools.orchestration.crud_operations.crud_operation") as mock_crud:
-            mock_crud.invoke.return_value = "✅ Success"
+            mock_crud.ainvoke = AsyncMock(return_value="✅ Success")
 
-            # Execute workflow
+            # Execute workflow - pass workflow_steps directly
             result = await deterministic_graph.ainvoke(
                 {
                     "messages": [HumanMessage(content="workflow: multi_step_test")],
                     "workflow_name": "multi_step_test",
-                    "steps": three_step_workflow["steps"],
+                    "workflow_steps": three_step_workflow["steps"],  # Use workflow_steps instead of steps
                 },
                 config={"configurable": {"thread_id": test_thread_id}},
             )

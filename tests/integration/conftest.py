@@ -49,6 +49,7 @@ def mock_panos_client():
     # Default mock responses
     client.get = AsyncMock(return_value=success_response)
     client.post = AsyncMock(return_value=success_response)
+    client.aclose = AsyncMock()
 
     return client
 
@@ -78,13 +79,21 @@ async def autonomous_graph(mock_panos_client):
     Returns:
         Compiled autonomous StateGraph with async checkpointer
     """
-    with patch("src.core.client.get_panos_client", return_value=mock_panos_client):
+    # Patch get_panos_client to return the mock client (using AsyncMock)
+    mock_get_client = AsyncMock(return_value=mock_panos_client)
+    
+    with patch("src.core.client.get_panos_client", mock_get_client):
         from src.autonomous_graph import create_autonomous_graph
         from src.core.checkpoint_manager import get_async_checkpointer
 
         checkpointer = await get_async_checkpointer()
         graph = create_autonomous_graph(checkpointer=checkpointer)
-        return graph
+        try:
+            yield graph
+        finally:
+            # Clean up async checkpointer connection
+            if hasattr(checkpointer, "conn") and checkpointer.conn:
+                await checkpointer.conn.close()
 
 
 @pytest_asyncio.fixture
@@ -94,13 +103,21 @@ async def deterministic_graph(mock_panos_client):
     Returns:
         Compiled deterministic StateGraph with async checkpointer
     """
-    with patch("src.core.client.get_panos_client", return_value=mock_panos_client):
+    # Patch get_panos_client to return the mock client (using AsyncMock)
+    mock_get_client = AsyncMock(return_value=mock_panos_client)
+    
+    with patch("src.core.client.get_panos_client", mock_get_client):
         from src.core.checkpoint_manager import get_async_checkpointer
         from src.deterministic_graph import create_deterministic_graph
 
         checkpointer = await get_async_checkpointer()
         graph = create_deterministic_graph(checkpointer=checkpointer)
-        return graph
+        try:
+            yield graph
+        finally:
+            # Clean up async checkpointer connection
+            if hasattr(checkpointer, "conn") and checkpointer.conn:
+                await checkpointer.conn.close()
 
 
 @pytest.fixture

@@ -61,4 +61,5 @@ Thumbs.db
 # docs
 docs/langgraph/
 docs/recommendations/
+panorama.xml
 evaluation_results/*.json

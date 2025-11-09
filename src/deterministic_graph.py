@@ -52,6 +52,17 @@ async def load_workflow_definition(state: DeterministicState) -> DeterministicSt
 
     logger.info(f"Loading workflow: {workflow_name}")
 
+    # If workflow_steps are already provided in state, use them (for testing/direct invocation)
+    if "workflow_steps" in state and state["workflow_steps"]:
+        return {
+            **state,
+            "current_step_index": 0,
+            "step_results": [],
+            "continue_workflow": True,
+            "workflow_complete": False,
+            "error_occurred": False,
+        }
+
     # Look up workflow definition
     if workflow_name not in WORKFLOWS:
         available = ", ".join(WORKFLOWS.keys()) if WORKFLOWS else "None"

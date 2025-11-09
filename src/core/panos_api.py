@@ -80,7 +80,9 @@ def build_xpath(
 
 
 def build_xml_element(
-    tag: str, attributes: Optional[dict[str, str]] = None, children: Optional[list] = None
+    tag: str,
+    attributes: Optional[dict[str, str]] = None,
+    children: Optional[list] = None,
 ) -> etree._Element:
     """Build an XML element with attributes and children.
 

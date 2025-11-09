@@ -1313,8 +1313,9 @@ LangSmith Cloud
 **Mitigation:**
 
 - Comprehensive test suite catches API changes
-- Version pin pan-os-python library
-- Monitor for deprecation warnings
+- Direct XML API integration (no third-party SDK dependency)
+- Version pin httpx and lxml libraries
+- Monitor PAN-OS XML API changes
 
 ---
 

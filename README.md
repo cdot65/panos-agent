@@ -1,7 +1,7 @@
 # PAN-OS LangGraph Agent
 
 AI agent for automating Palo Alto Networks PAN-OS firewalls using natural language.
-Built with LangGraph and pan-os-python.
+Built with LangGraph, using `httpx` for async HTTP and `lxml` for XML processing.
 
 ## Overview
 
@@ -19,12 +19,14 @@ This project demonstrates two approaches to AI-driven network automation:
 
 - 🤖 **Dual-mode operation**: Autonomous (ReAct) and Deterministic (workflow-based)
 - 🔧 **Comprehensive PAN-OS support**: 33 tools across addresses, services, policies, NAT
+- ⚡ **Fully async architecture**: Built on `httpx` and `lxml` for high-performance I/O
 - 🎯 **LangGraph Studio integration**: Visual debugging and execution
 - 📡 **Real-time streaming**: Live progress updates with emoji indicators (default)
 - 🔄 **Retry logic**: Exponential backoff for transient failures
 - 🏗️ **Composable subgraphs**: CRUD and commit workflows
 - 📝 **Firewall commits**: Job polling with approval gates
-- 💾 **Persistent checkpointing**: SQLite-based conversation history and failure recovery
+- 💾 **Persistent checkpointing**: AsyncSqliteSaver for conversation history and failure recovery
+- ✅ **XPath validation**: Structured XML generation with validation rules
 
 ## Quickstart
 
@@ -142,6 +144,7 @@ panos-agent run -p "List objects" --model claude-3-5-sonnet-20241022
 | **Claude Opus 3** | `opus` | ⚡⚡⚡ Moderate | 💵💵💵💵 Highest | Most powerful, deep analysis, recommendations |
 
 **Currently Available Models:**
+
 - `claude-haiku-4-5` (Haiku, latest - **default**)
 - `claude-3-5-sonnet-20241022` (Sonnet 3.5)
 - `claude-3-opus-20240229` (Opus 3)
@@ -149,6 +152,7 @@ panos-agent run -p "List objects" --model claude-3-5-sonnet-20241022
 ### When to Use Each Model
 
 **Use Haiku (default) for:**
+
 - Simple list operations (`List all address objects`)
 - Single CRUD operations (`Create address X`, `Delete service Y`)
 - Batch operations with known patterns
@@ -157,6 +161,7 @@ panos-agent run -p "List objects" --model claude-3-5-sonnet-20241022
 - Most automation tasks (recommended default)
 
 **Use Sonnet for:**
+
 - Multi-step operations
 - Policy creation with multiple objects
 - Natural language queries requiring reasoning
@@ -164,6 +169,7 @@ panos-agent run -p "List objects" --model claude-3-5-sonnet-20241022
 - When quality matters more than speed
 
 **Use Opus for:**
+
 - Deep security analysis
 - Policy recommendations and auditing
 - Multi-constraint decision making
@@ -186,6 +192,7 @@ panos-agent run -p "Brainstorm security architectures" --temperature 1.0
 ```
 
 **Recommendations:**
+
 - **0.0 (default)**: Use for all CRUD operations, deterministic workflows
 - **0.3-0.5**: Use for recommendations with some variety
 - **0.7-1.0**: Use for creative tasks (naming, brainstorming)
@@ -770,12 +777,12 @@ The agent classifies errors into three tiers:
 1. **Tier 1 - Connectivity Errors (Retryable)**
    - Network timeouts, DNS failures, connection resets
    - Automatically retried with exponential backoff
-   - Example: `PanConnectionTimeout`, `PanURLError`
+   - Example: `PanOSConnectionError`, `httpx.TimeoutException`, `httpx.NetworkError`
 
 2. **Tier 2 - API/Configuration Errors (Non-retryable)**
    - Validation errors, object conflicts, permission issues
    - Fail immediately with clear error messages
-   - Example: `PanDeviceError: "Object already exists"`
+   - Example: `PanOSAPIError: "Object already exists"`, `PanOSValidationError`
 
 3. **Tier 3 - Unexpected Errors (Non-retryable)**
    - Unknown exceptions with full traceback logging
@@ -1335,7 +1342,8 @@ See repository root for license information.
 ## Resources
 
 - [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
-- [pan-os-python Documentation](https://pan-os-python.readthedocs.io/)
+- [httpx Documentation](https://www.python-httpx.org/) - Async HTTP client
+- [lxml Documentation](https://lxml.de/) - XML processing
 - [PAN-OS XML API Reference](https://docs.paloaltonetworks.com/pan-os/11-0/pan-os-panorama-api)
 
 ---
@@ -1347,7 +1355,8 @@ See repository root for license information.
 
 - ✅ LangSmith environment variables and anonymizers (Phase 1.1-1.2)
 - ✅ Metadata and tags for observability (Phase 1.3)
-- ✅ Fixed CRUD subgraph pan-os-python API usage
-- ✅ Fixed deterministic workflow step accumulation bug
+- ✅ Migrated from pan-os-python to httpx + lxml (fully async)
+- ✅ Added XPath validation and structure mapping
+- ✅ AsyncSqliteSaver for async checkpointing
 
-**Last Updated**: 2025-01-08
+**Last Updated**: 2025-01-09

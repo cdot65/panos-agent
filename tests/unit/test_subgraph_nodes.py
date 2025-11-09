@@ -103,7 +103,7 @@ class TestCRUDSubgraph:
         assert "Unsupported object_type" in result["validation_result"]
         assert result["error"] is not None
 
-    @pytest.mark.skip(reason="pan-os-python mocking too complex - needs integration test")
+    @pytest.mark.skip(reason="httpx API mocking complex - covered by integration tests")
     @patch("src.core.subgraphs.crud.get_firewall_client")
     @patch("src.core.subgraphs.crud.AddressObject")
     def test_check_existence_object_exists(self, mock_address_class, mock_get_client):
@@ -137,7 +137,7 @@ class TestCRUDSubgraph:
         assert result["exists"] is True
         assert result["error"] is None
 
-    @pytest.mark.skip(reason="pan-os-python mocking too complex - needs integration test")
+    @pytest.mark.skip(reason="httpx API mocking complex - covered by integration tests")
     @patch("src.core.subgraphs.crud.get_firewall_client")
     @patch("src.core.subgraphs.crud.AddressObject")
     def test_check_existence_object_not_exists(self, mock_address_class, mock_get_client):
@@ -275,9 +275,7 @@ class TestDeterministicWorkflowSubgraph:
         state: DeterministicWorkflowState = {
             "workflow_name": "test_workflow",
             "workflow_params": {},
-            "steps": [
-                {"name": "Step 1", "type": "tool_call", "tool": "address_create"}
-            ],
+            "steps": [{"name": "Step 1", "type": "tool_call", "tool": "address_create"}],
             "current_step": 0,
             "step_outputs": [],
             "overall_result": None,

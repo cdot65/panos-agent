@@ -119,7 +119,7 @@ def execute_step(state: DeterministicWorkflowState) -> DeterministicWorkflowStat
                         }
                     ],
                 }
-            except PanDeviceError as e:
+            except PanOSAPIError as e:
                 # PAN-OS API errors - configuration issues, object conflicts, etc.
                 logger.error(f"PAN-OS API error in step '{step_name}': {e}")
                 return {

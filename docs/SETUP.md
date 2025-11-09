@@ -308,20 +308,33 @@ python --version  # Verify
 
 3. Check firewall management interface enabled
 
-4. Test with pan-os-python directly:
+4. Test API connectivity with httpx:
 
 ```python
+import asyncio
+import httpx
+from lxml import etree
 
-from panos.firewall import Firewall
-fw = Firewall("192.168.1.1", api_username="admin", api_password="password")
-fw.refresh_system_info()
-print(fw.version)
+async def test_connection():
+    url = "https://192.168.1.1/api/"
+    params = {
+        "type": "op",
+        "cmd": "<show><system><info></info></system></show>",
+        "key": "your-api-key-here"
+    }
+    async with httpx.AsyncClient(verify=False) as client:
+        response = await client.get(url, params=params)
+        root = etree.fromstring(response.content)
+        version = root.find(".//sw-version")
+        print(f"PAN-OS Version: {version.text if version is not None else 'Unknown'}")
 
-```text
+asyncio.run(test_connection())
+```
 
 ### Issue: Anthropic API errors
 
 **Solution:**
+
 1. Verify API key: `echo $ANTHROPIC_API_KEY`
 
 2. Check API quota/limits
@@ -404,8 +417,9 @@ Set interpreter: Settings → Project → Python Interpreter → Add → Virtual
 ## Resources
 
 - **LangGraph**: <<https://langchain-ai.github.io/langgraph/>>
-- **pan-os-python**: <<https://pan-os-python.readthedocs.io/>>
-- **PAN-OS API**: <<https://docs.paloaltonetworks.com/pan-os/11-0/pan-os-panorama-api>>
+- **httpx**: <<https://www.python-httpx.org/>> (Async HTTP client)
+- **lxml**: <<https://lxml.de/>> (XML processing)
+- **PAN-OS XML API**: <<https://docs.paloaltonetworks.com/pan-os/11-0/pan-os-panorama-api>>
 - **Anthropic**: <<https://docs.anthropic.com/>>
 
 ---

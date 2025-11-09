@@ -17,18 +17,18 @@ class AgentContext:
     Allows runtime model/temperature selection via CLI flags.
 
     Attributes:
-        model_name: Claude model to use (defaults to claude-sonnet-4-5-20250915)
+        model_name: Claude model to use (defaults to claude-sonnet-4-5-20250929)
         temperature: Temperature for LLM (0.0 = deterministic, 1.0 = creative)
         max_tokens: Maximum tokens for LLM response
         firewall_client: Optional firewall client for testing (None uses real client)
-    
+
     Note:
         Default model updated to Claude Sonnet 4.5 (Sep 2025) for best balance
         of performance and speed. See MODEL_ALIASES in cli/commands.py for
         all available models.
     """
 
-    model_name: str = "claude-sonnet-4-5-20250915"  # Claude Sonnet 4.5 (Latest)
+    model_name: str = "claude-sonnet-4-5-20250929"  # Claude Sonnet 4.5 (Latest)
     temperature: float = 0.0
     max_tokens: int = 4096
     firewall_client: Any | None = None

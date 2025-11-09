@@ -127,11 +127,14 @@ def call_agent(
     if memory_context:
         system_prompt = memory_context + AUTONOMOUS_SYSTEM_PROMPT
 
+    # Get runtime context or use defaults
+    context = runtime.context if (runtime and runtime.context) else AgentContext()
+
     # Initialize LLM with tools using runtime context
     llm = ChatAnthropic(
-        model=runtime.context.model_name,
-        temperature=runtime.context.temperature,
-        max_tokens=runtime.context.max_tokens,
+        model=context.model_name,
+        temperature=context.temperature,
+        max_tokens=context.max_tokens,
         api_key=settings.anthropic_api_key,
     )
     llm_with_tools = llm.bind_tools(ALL_TOOLS)

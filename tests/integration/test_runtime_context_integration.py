@@ -38,9 +38,11 @@ class TestRuntimeContextIntegration:
             config={
                 "configurable": {
                     "thread_id": "test-haiku-1",
-                    "model_name": "claude-haiku-4-5",
-                    "temperature": 0.0,
                 }
+            },
+            context={
+                "model_name": "claude-haiku-4-5",
+                "temperature": 0.0,
             },
         )
 
@@ -79,10 +81,12 @@ class TestRuntimeContextIntegration:
             config={
                 "configurable": {
                     "thread_id": "test-opus-1",
-                    "model_name": "claude-3-opus-20240229",
-                    "temperature": 0.0,
-                    "max_tokens": 8192,
                 }
+            },
+            context={
+                "model_name": "claude-3-opus-20240229",
+                "temperature": 0.0,
+                "max_tokens": 8192,
             },
         )
 
@@ -122,9 +126,11 @@ class TestRuntimeContextIntegration:
             config={
                 "configurable": {
                     "thread_id": "test-temp-1",
-                    "model_name": "claude-3-5-sonnet-20241022",
-                    "temperature": 0.7,
                 }
+            },
+            context={
+                "model_name": "claude-3-5-sonnet-20241022",
+                "temperature": 0.7,
             },
         )
 
@@ -157,34 +163,33 @@ class TestRuntimeContextIntegration:
         ]
         mock_chat_anthropic.return_value.bind_tools.return_value = mock_llm
 
-        # Mock tool execution
-        from src.tools.address_objects import address_list
+        # Mock tool execution by patching the underlying function
+        with patch("src.tools.address_objects.address_list", return_value="[]"):
+            # Create graph
+            graph = create_autonomous_graph()
 
-        with patch("src.autonomous_graph.ALL_TOOLS", [address_list]):
-            with patch.object(address_list, "invoke", return_value="[]"):
-                # Create graph
-                graph = create_autonomous_graph()
+            # Execute graph - will make two agent calls (tool call + final)
+            result = graph.invoke(
+                {"messages": [HumanMessage(content="List addresses")]},
+                config={
+                    "configurable": {
+                        "thread_id": "test-persist-1",
+                    }
+                },
+                context={
+                    "model_name": "claude-haiku-4-5",
+                    "temperature": 0.0,
+                },
+            )
 
-                # Execute graph - will make two agent calls (tool call + final)
-                result = graph.invoke(
-                    {"messages": [HumanMessage(content="List addresses")]},
-                    config={
-                        "configurable": {
-                            "thread_id": "test-persist-1",
-                            "model_name": "claude-haiku-4-5",
-                            "temperature": 0.0,
-                        }
-                    },
-                )
+            # Verify graph completed successfully
+            assert "messages" in result
 
-                # Verify graph completed successfully
-                assert "messages" in result
-
-                # Verify Haiku model was used in BOTH calls
-                assert mock_chat_anthropic.call_count >= 2
-                for call in mock_chat_anthropic.call_args_list:
-                    assert call[1]["model"] == "claude-haiku-4-5"
-                    assert call[1]["temperature"] == 0.0
+            # Verify Haiku model was used in BOTH calls
+            assert mock_chat_anthropic.call_count >= 2
+            for call in mock_chat_anthropic.call_args_list:
+                assert call[1]["model"] == "claude-haiku-4-5"
+                assert call[1]["temperature"] == 0.0
 
 
 class TestRuntimeContextDefaults:
@@ -221,7 +226,7 @@ class TestRuntimeContextDefaults:
         assert mock_chat_anthropic.called
         call_kwargs = mock_chat_anthropic.call_args[1]
         # Should use AgentContext defaults
-        assert call_kwargs["model"] == "claude-3-5-sonnet-20241022"  # default
+        assert call_kwargs["model"] == "claude-sonnet-4-5-20250929"  # default
         assert call_kwargs["temperature"] == 0.0  # default
 
 
@@ -255,9 +260,11 @@ class TestRuntimeContextErrorHandling:
                 config={
                     "configurable": {
                         "thread_id": "test-error-1",
-                        "model_name": "claude-haiku-4-5",
-                        "temperature": 0.0,
                     }
+                },
+                context={
+                    "model_name": "claude-haiku-4-5",
+                    "temperature": 0.0,
                 },
             )
 
@@ -291,8 +298,10 @@ class TestRuntimeContextModelComparison:
             config={
                 "configurable": {
                     "thread_id": "test-haiku-2",
-                    "model_name": "claude-haiku-4-5",
                 }
+            },
+            context={
+                "model_name": "claude-haiku-4-5",
             },
         )
         haiku_call_kwargs = mock_chat_anthropic.call_args[1]
@@ -306,8 +315,10 @@ class TestRuntimeContextModelComparison:
             config={
                 "configurable": {
                     "thread_id": "test-sonnet-2",
-                    "model_name": "claude-3-5-sonnet-20241022",
                 }
+            },
+            context={
+                "model_name": "claude-3-5-sonnet-20241022",
             },
         )
         sonnet_call_kwargs = mock_chat_anthropic.call_args[1]

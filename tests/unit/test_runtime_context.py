@@ -10,7 +10,7 @@ class TestAgentContextDefaults:
     def test_default_model_name(self):
         """Test that default model is Claude Sonnet 4.5."""
         ctx = AgentContext()
-        assert ctx.model_name == "claude-sonnet-4-5-20250915"
+        assert ctx.model_name == "claude-sonnet-4-5-20250929"
 
     def test_default_temperature(self):
         """Test that default temperature is 0.0 (deterministic)."""
@@ -182,9 +182,7 @@ class TestAgentContextUseCases:
 
     def test_opus_for_complexity(self):
         """Test configuration for complex tasks with Opus."""
-        ctx = AgentContext(
-            model_name="claude-3-opus-20240229", temperature=0.0, max_tokens=8192
-        )
+        ctx = AgentContext(model_name="claude-3-opus-20240229", temperature=0.0, max_tokens=8192)
         assert "opus" in ctx.model_name.lower()
         assert ctx.max_tokens == 8192
 
@@ -205,4 +203,3 @@ class TestAgentContextUseCases:
         )
         assert ctx.firewall_client is not None
         assert ctx.firewall_client is mock_fw
-

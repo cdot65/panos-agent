@@ -40,6 +40,7 @@ Use these aliases with the `--model` flag for the latest versions:
 ### Claude 4 Series (2025) - Current Generation
 
 #### Claude Opus 4.1 (Most Powerful)
+
 - **API Name:** `claude-opus-4-1-20250805`
 - **Release Date:** August 5, 2025
 - **Alias:** `opus`, `opus-4.1`
@@ -48,6 +49,7 @@ Use these aliases with the `--model` flag for the latest versions:
 - **Training Data:** Through March 2025
 
 **Best For:**
+
 - Complex reasoning and analysis
 - Security policy auditing
 - Multi-constraint decision making
@@ -58,6 +60,7 @@ Use these aliases with the `--model` flag for the latest versions:
 **Speed:** Moderate
 
 #### Claude Opus 4
+
 - **API Name:** `claude-opus-4-20250514`
 - **Release Date:** May 14, 2025
 - **Alias:** `opus-4`
@@ -66,6 +69,7 @@ Use these aliases with the `--model` flag for the latest versions:
 - **Training Data:** Through March 2025
 
 **Best For:**
+
 - High-performance tasks requiring strong reasoning
 - Complex automation workflows
 
@@ -73,7 +77,8 @@ Use these aliases with the `--model` flag for the latest versions:
 **Speed:** Moderate
 
 #### Claude Sonnet 4.5 (Default, Latest)
-- **API Name:** `claude-sonnet-4-5-20250915`
+
+- **API Name:** `claude-sonnet-4-5-20250929`
 - **Release Date:** September 15, 2025
 - **Alias:** `sonnet`, `sonnet-4.5`
 - **Context Window:** 200K tokens
@@ -81,6 +86,7 @@ Use these aliases with the `--model` flag for the latest versions:
 - **Training Data:** Through March 2025
 
 **Best For:**
+
 - General-purpose automation (DEFAULT)
 - Multi-step operations
 - Natural language queries
@@ -91,6 +97,7 @@ Use these aliases with the `--model` flag for the latest versions:
 **Speed:** Fast
 
 #### Claude Sonnet 4
+
 - **API Name:** `claude-sonnet-4-20250514`
 - **Release Date:** May 14, 2025
 - **Alias:** `sonnet-4`
@@ -99,12 +106,14 @@ Use these aliases with the `--model` flag for the latest versions:
 - **Training Data:** Through March 2025
 
 **Best For:**
+
 - Alternative to Sonnet 4.5 with similar capabilities
 
 **Cost:** Moderate
 **Speed:** Fast
 
 #### Claude 3.7 Sonnet (Hybrid Reasoning)
+
 - **API Name:** `claude-3-7-sonnet-20250219`
 - **Release Date:** February 19, 2025
 - **Alias:** `sonnet-3.7`
@@ -113,6 +122,7 @@ Use these aliases with the `--model` flag for the latest versions:
 - **Training Data:** Through October 2024
 
 **Best For:**
+
 - Extended thinking mode
 - Complex problem-solving requiring step-by-step reasoning
 - Specialized reasoning tasks
@@ -121,7 +131,8 @@ Use these aliases with the `--model` flag for the latest versions:
 **Speed:** Slower (extended thinking)
 
 #### Claude Haiku 4.5 (Fastest)
-- **API Name:** `claude-haiku-4-5-20251010`
+
+- **API Name:** `claude-haiku-4-5-20251001`
 - **Release Date:** October 10, 2025
 - **Alias:** `haiku`, `haiku-4.5`
 - **Context Window:** 200K tokens
@@ -129,6 +140,7 @@ Use these aliases with the `--model` flag for the latest versions:
 - **Training Data:** Through March 2025
 
 **Best For:**
+
 - Simple list operations
 - Single CRUD operations
 - Batch operations with known patterns
@@ -141,6 +153,7 @@ Use these aliases with the `--model` flag for the latest versions:
 ### Claude 3 Series (2024) - Previous Generation
 
 #### Claude 3.5 Haiku
+
 - **API Name:** `claude-3-5-haiku-20241022`
 - **Release Date:** October 22, 2024
 - **Alias:** `haiku-3.5`
@@ -149,6 +162,7 @@ Use these aliases with the `--model` flag for the latest versions:
 - **Training Data:** Through July 2024
 
 **Best For:**
+
 - Legacy compatibility
 - Fallback for Haiku 4.5
 
@@ -203,7 +217,7 @@ panos-agent run -p "Quick list" --model haiku-3.5
 
 ```bash
 # Using full API model name
-panos-agent run -p "test" --model claude-sonnet-4-5-20250915
+panos-agent run -p "test" --model claude-sonnet-4-5-20250929
 
 # Direct API name for specific version control
 panos-agent run -p "test" --model claude-opus-4-1-20250805
@@ -215,7 +229,8 @@ panos-agent run -p "test" --model claude-opus-4-1-20250805
 
 ### When to Use Each Model
 
-#### Use Haiku (4.5) When:
+#### Use Haiku (4.5) When
+
 - ✅ Simple CRUD operations
 - ✅ List/read operations
 - ✅ Known patterns and workflows
@@ -223,7 +238,8 @@ panos-agent run -p "test" --model claude-opus-4-1-20250805
 - ✅ High-volume batch processing
 - ✅ Budget constraints
 
-#### Use Sonnet (4.5) When:
+#### Use Sonnet (4.5) When
+
 - ✅ General automation (DEFAULT)
 - ✅ Multi-step operations
 - ✅ Natural language queries
@@ -231,13 +247,15 @@ panos-agent run -p "test" --model claude-opus-4-1-20250805
 - ✅ Balanced performance needs
 - ✅ Most use cases
 
-#### Use Sonnet 3.7 When:
+#### Use Sonnet 3.7 When
+
 - ✅ Need extended thinking/reasoning
 - ✅ Complex problem-solving
 - ✅ Step-by-step analysis required
 - ✅ Specialized reasoning tasks
 
-#### Use Opus (4.1) When:
+#### Use Opus (4.1) When
+
 - ✅ Complex security analysis
 - ✅ Policy recommendations
 - ✅ Multi-constraint decisions
@@ -248,12 +266,14 @@ panos-agent run -p "test" --model claude-opus-4-1-20250805
 ### Cost Optimization Strategy
 
 **Development/Testing:**
+
 ```bash
 # Use Haiku for fast, cheap iteration
 panos-agent run -p "test queries" --model haiku
 ```
 
 **Production - Simple Operations:**
+
 ```bash
 # Use Haiku for high-volume simple operations
 panos-agent run -p "List objects" --model haiku
@@ -261,6 +281,7 @@ panos-agent run -p "Create standard address" --model haiku
 ```
 
 **Production - Standard Operations:**
+
 ```bash
 # Use Sonnet (default) for most automation
 panos-agent run -p "Setup web server rules"
@@ -268,6 +289,7 @@ panos-agent run -p "Setup web server rules"
 ```
 
 **Production - Complex Operations:**
+
 ```bash
 # Use Opus when accuracy is critical
 panos-agent run -p "Audit security for PCI compliance" --model opus
@@ -283,11 +305,13 @@ panos-agent run -p "Analyze and recommend policy changes" --model opus
 If you were using old model names, update them as follows:
 
 **Old → New:**
-- `claude-3-5-sonnet-20241022` → `claude-sonnet-4-5-20250915` (or alias: `sonnet`)
+
+- `claude-3-5-sonnet-20241022` → `claude-sonnet-4-5-20250929` (or alias: `sonnet`)
 - `claude-3-opus-20240229` → `claude-opus-4-1-20250805` (or alias: `opus`)
-- `claude-haiku-4-5` → `claude-haiku-4-5-20251010` (or alias: `haiku`)
+- `claude-haiku-4-5` → `claude-haiku-4-5-20251001` (or alias: `haiku`)
 
 **Using Aliases (Recommended):**
+
 ```bash
 # Old way (outdated model)
 --model claude-3-5-sonnet-20241022
@@ -299,6 +323,7 @@ If you were using old model names, update them as follows:
 ### Deprecated Models
 
 The following models were retired on **July 21, 2025**:
+
 - ❌ Claude 2.0
 - ❌ Claude 2.1
 - ❌ All Claude 1.x models
@@ -308,14 +333,17 @@ The following models were retired on **July 21, 2025**:
 ## Model Capabilities
 
 ### Context Window (All Current Models)
+
 All Claude 4 and 3.7 models support **200,000 tokens** context window.
 
 ### Output Limits
+
 - **Opus models:** 32,000 tokens max output
 - **Sonnet models:** 64,000 tokens max output
 - **Haiku models:** 8,192 tokens max output
 
 ### Training Data Cutoff
+
 - **Claude 4 series:** March 2025
 - **Claude 3.7:** October 2024
 - **Claude 3.5 Haiku:** July 2024
@@ -330,9 +358,9 @@ The model aliases are defined in `src/cli/commands.py`:
 
 ```python
 MODEL_ALIASES = {
-    "sonnet": "claude-sonnet-4-5-20250915",
+    "sonnet": "claude-sonnet-4-5-20250929",
     "opus": "claude-opus-4-1-20250805",
-    "haiku": "claude-haiku-4-5-20251010",
+    "haiku": "claude-haiku-4-5-20251001",
     # ... more aliases
 }
 ```
@@ -342,7 +370,7 @@ Default model in `src/core/config.py`:
 ```python
 @dataclass
 class AgentContext:
-    model_name: str = "claude-sonnet-4-5-20250915"
+    model_name: str = "claude-sonnet-4-5-20250929"
     # ...
 ```
 
@@ -367,4 +395,3 @@ To add new models as they're released:
 ---
 
 **Note:** This document is maintained as models evolve. Check Anthropic's official documentation for the most current information.
-

@@ -34,30 +34,28 @@ console = Console()
 # Updated: 2025-01-09 with latest Anthropic Claude models
 MODEL_ALIASES = {
     # Latest versions (recommended)
-    "sonnet": "claude-sonnet-4-5-20250915",  # Latest Sonnet (Sep 2025)
-    "opus": "claude-opus-4-1-20250805",      # Latest Opus (Aug 2025)
-    "haiku": "claude-haiku-4-5-20251010",    # Latest Haiku (Oct 2025)
-    
+    "sonnet": "claude-sonnet-4-5-20250929",  # Latest Sonnet (Sep 2025)
+    "opus": "claude-opus-4-1-20250805",  # Latest Opus (Aug 2025)
+    "haiku": "claude-haiku-4-5-20251001",  # Latest Haiku (Oct 2025)
     # Alternative aliases for specific versions
-    "sonnet-4.5": "claude-sonnet-4-5-20250915",
+    "sonnet-4.5": "claude-sonnet-4-5-20250929",
     "sonnet-4": "claude-sonnet-4-20250514",
     "sonnet-3.7": "claude-3-7-sonnet-20250219",  # Hybrid reasoning model
     "opus-4.1": "claude-opus-4-1-20250805",
     "opus-4": "claude-opus-4-20250514",
-    "haiku-4.5": "claude-haiku-4-5-20251010",
+    "haiku-4.5": "claude-haiku-4-5-20251001",
     "haiku-3.5": "claude-3-5-haiku-20241022",
 }
 
 # All supported models for validation
 SUPPORTED_MODELS = [
     # Claude 4 series (2025)
-    "claude-opus-4-1-20250805",       # Most powerful
+    "claude-opus-4-1-20250805",  # Most powerful
     "claude-opus-4-20250514",
-    "claude-sonnet-4-5-20250915",     # Latest Sonnet
+    "claude-sonnet-4-5-20250929",  # Latest Sonnet
     "claude-sonnet-4-20250514",
-    "claude-3-7-sonnet-20250219",     # Hybrid reasoning
-    "claude-haiku-4-5-20251010",      # Latest Haiku
-    
+    "claude-3-7-sonnet-20250219",  # Hybrid reasoning
+    "claude-haiku-4-5-20251001",  # Latest Haiku
     # Claude 3 series (2024) - still supported
     "claude-3-5-haiku-20241022",
 ]
@@ -280,8 +278,9 @@ def run(
                                 step_count = node_output["current_step"]
                                 total_steps = len(node_output.get("workflow_steps", []))
                                 current_step_desc = (
-                                    node_output.get("workflow_steps", [])[step_count - 1]
-                                    .get("description", "Executing step")
+                                    node_output.get("workflow_steps", [])[step_count - 1].get(
+                                        "description", "Executing step"
+                                    )
                                     if step_count <= total_steps
                                     else "Executing step"
                                 )

@@ -21,7 +21,7 @@ class TestModelAliases:
     def test_model_aliases_has_sonnet(self):
         """Test that sonnet alias is defined."""
         assert "sonnet" in MODEL_ALIASES
-        assert MODEL_ALIASES["sonnet"] == "claude-sonnet-4-5-20250915"
+        assert MODEL_ALIASES["sonnet"] == "claude-sonnet-4-5-20250929"
 
     def test_model_aliases_has_opus(self):
         """Test that opus alias is defined."""
@@ -31,7 +31,7 @@ class TestModelAliases:
     def test_model_aliases_has_haiku(self):
         """Test that haiku alias is defined."""
         assert "haiku" in MODEL_ALIASES
-        assert MODEL_ALIASES["haiku"] == "claude-haiku-4-5-20251010"
+        assert MODEL_ALIASES["haiku"] == "claude-haiku-4-5-20251001"
 
     def test_all_model_aliases_are_strings(self):
         """Test that all model aliases map to strings."""
@@ -46,7 +46,7 @@ class TestResolveModelName:
     def test_resolve_sonnet_alias(self):
         """Test resolving 'sonnet' alias."""
         result = resolve_model_name("sonnet")
-        assert result == "claude-sonnet-4-5-20250915"
+        assert result == "claude-sonnet-4-5-20250929"
 
     def test_resolve_opus_alias(self):
         """Test resolving 'opus' alias."""
@@ -56,23 +56,23 @@ class TestResolveModelName:
     def test_resolve_haiku_alias(self):
         """Test resolving 'haiku' alias."""
         result = resolve_model_name("haiku")
-        assert result == "claude-haiku-4-5-20251010"
+        assert result == "claude-haiku-4-5-20251001"
 
     def test_resolve_case_insensitive_uppercase(self):
         """Test that alias resolution is case-insensitive (uppercase)."""
-        assert resolve_model_name("SONNET") == "claude-sonnet-4-5-20250915"
+        assert resolve_model_name("SONNET") == "claude-sonnet-4-5-20250929"
         assert resolve_model_name("OPUS") == "claude-opus-4-1-20250805"
-        assert resolve_model_name("HAIKU") == "claude-haiku-4-5-20251010"
+        assert resolve_model_name("HAIKU") == "claude-haiku-4-5-20251001"
 
     def test_resolve_case_insensitive_mixed(self):
         """Test that alias resolution is case-insensitive (mixed case)."""
-        assert resolve_model_name("Sonnet") == "claude-sonnet-4-5-20250915"
+        assert resolve_model_name("Sonnet") == "claude-sonnet-4-5-20250929"
         assert resolve_model_name("OpUs") == "claude-opus-4-1-20250805"
-        assert resolve_model_name("HaiKU") == "claude-haiku-4-5-20251010"
+        assert resolve_model_name("HaiKU") == "claude-haiku-4-5-20251001"
 
     def test_resolve_full_model_name_passthrough(self):
         """Test that full model names pass through unchanged."""
-        full_name = "claude-sonnet-4-5-20250915"
+        full_name = "claude-sonnet-4-5-20250929"
         result = resolve_model_name(full_name)
         assert result == full_name
 
@@ -112,7 +112,7 @@ class TestCLIModelFlag:
         # Verify default model was used
         assert result.exit_code == 0
         call_kwargs = mock_graph.invoke.call_args[1]
-        assert call_kwargs["context"]["model_name"] == "claude-sonnet-4-5-20250915"
+        assert call_kwargs["context"]["model_name"] == "claude-sonnet-4-5-20250929"
 
     @patch("src.autonomous_graph.create_autonomous_graph")
     @patch("src.core.config.get_settings")
@@ -130,15 +130,14 @@ class TestCLIModelFlag:
         mock_create_graph.return_value = mock_graph
 
         # Run with --model haiku
-        result = runner.invoke(app, [
-            "run", "-p", "test", "-m", "autonomous",
-            "--model", "haiku", "--no-stream"
-        ])
+        result = runner.invoke(
+            app, ["run", "-p", "test", "-m", "autonomous", "--model", "haiku", "--no-stream"]
+        )
 
         # Verify Haiku model was used
         assert result.exit_code == 0
         call_kwargs = mock_graph.invoke.call_args[1]
-        assert call_kwargs["context"]["model_name"] == "claude-haiku-4-5-20251010"
+        assert call_kwargs["context"]["model_name"] == "claude-haiku-4-5-20251001"
 
     @patch("src.autonomous_graph.create_autonomous_graph")
     @patch("src.core.config.get_settings")
@@ -156,10 +155,9 @@ class TestCLIModelFlag:
         mock_create_graph.return_value = mock_graph
 
         # Run with --model opus
-        result = runner.invoke(app, [
-            "run", "-p", "test", "-m", "autonomous",
-            "--model", "opus", "--no-stream"
-        ])
+        result = runner.invoke(
+            app, ["run", "-p", "test", "-m", "autonomous", "--model", "opus", "--no-stream"]
+        )
 
         # Verify Opus model was used
         assert result.exit_code == 0
@@ -183,10 +181,9 @@ class TestCLIModelFlag:
 
         # Run with full model name
         full_model = "claude-3-5-sonnet-20241022"
-        result = runner.invoke(app, [
-            "run", "-p", "test", "-m", "autonomous",
-            "--model", full_model, "--no-stream"
-        ])
+        result = runner.invoke(
+            app, ["run", "-p", "test", "-m", "autonomous", "--model", full_model, "--no-stream"]
+        )
 
         # Verify full model name was used
         assert result.exit_code == 0
@@ -209,10 +206,9 @@ class TestCLIModelFlag:
         mock_create_graph.return_value = mock_graph
 
         # Run with --model haiku
-        result = runner.invoke(app, [
-            "run", "-p", "test", "-m", "autonomous",
-            "--model", "haiku", "--no-stream"
-        ])
+        result = runner.invoke(
+            app, ["run", "-p", "test", "-m", "autonomous", "--model", "haiku", "--no-stream"]
+        )
 
         # Verify model is shown in output
         assert result.exit_code == 0
@@ -261,10 +257,9 @@ class TestCLITemperatureFlag:
         mock_create_graph.return_value = mock_graph
 
         # Run with --temperature 0.7
-        result = runner.invoke(app, [
-            "run", "-p", "test", "-m", "autonomous",
-            "--temperature", "0.7", "--no-stream"
-        ])
+        result = runner.invoke(
+            app, ["run", "-p", "test", "-m", "autonomous", "--temperature", "0.7", "--no-stream"]
+        )
 
         # Verify custom temperature was used
         assert result.exit_code == 0
@@ -287,10 +282,9 @@ class TestCLITemperatureFlag:
         mock_create_graph.return_value = mock_graph
 
         # Run with --temperature 0.0
-        result = runner.invoke(app, [
-            "run", "-p", "test", "-m", "autonomous",
-            "--temperature", "0.0", "--no-stream"
-        ])
+        result = runner.invoke(
+            app, ["run", "-p", "test", "-m", "autonomous", "--temperature", "0.0", "--no-stream"]
+        )
 
         # Verify temperature 0.0 was used
         assert result.exit_code == 0
@@ -313,10 +307,9 @@ class TestCLITemperatureFlag:
         mock_create_graph.return_value = mock_graph
 
         # Run with --temperature 1.0
-        result = runner.invoke(app, [
-            "run", "-p", "test", "-m", "autonomous",
-            "--temperature", "1.0", "--no-stream"
-        ])
+        result = runner.invoke(
+            app, ["run", "-p", "test", "-m", "autonomous", "--temperature", "1.0", "--no-stream"]
+        )
 
         # Verify temperature 1.0 was used
         assert result.exit_code == 0
@@ -339,10 +332,9 @@ class TestCLITemperatureFlag:
         mock_create_graph.return_value = mock_graph
 
         # Run with --temperature 0.5
-        result = runner.invoke(app, [
-            "run", "-p", "test", "-m", "autonomous",
-            "--temperature", "0.5", "--no-stream"
-        ])
+        result = runner.invoke(
+            app, ["run", "-p", "test", "-m", "autonomous", "--temperature", "0.5", "--no-stream"]
+        )
 
         # Verify temperature is shown in output
         assert result.exit_code == 0
@@ -368,15 +360,26 @@ class TestCLIModelAndTemperatureCombined:
         mock_create_graph.return_value = mock_graph
 
         # Run with both flags
-        result = runner.invoke(app, [
-            "run", "-p", "test", "-m", "autonomous",
-            "--model", "haiku", "--temperature", "0.0", "--no-stream"
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "-p",
+                "test",
+                "-m",
+                "autonomous",
+                "--model",
+                "haiku",
+                "--temperature",
+                "0.0",
+                "--no-stream",
+            ],
+        )
 
         # Verify both settings were applied
         assert result.exit_code == 0
         call_kwargs = mock_graph.invoke.call_args[1]
-        assert call_kwargs["context"]["model_name"] == "claude-haiku-4-5-20251010"
+        assert call_kwargs["context"]["model_name"] == "claude-haiku-4-5-20251001"
         assert call_kwargs["context"]["temperature"] == 0.0
 
     @patch("src.autonomous_graph.create_autonomous_graph")
@@ -395,10 +398,21 @@ class TestCLIModelAndTemperatureCombined:
         mock_create_graph.return_value = mock_graph
 
         # Run with both flags
-        result = runner.invoke(app, [
-            "run", "-p", "test", "-m", "autonomous",
-            "--model", "opus", "--temperature", "0.7", "--no-stream"
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "-p",
+                "test",
+                "-m",
+                "autonomous",
+                "--model",
+                "opus",
+                "--temperature",
+                "0.7",
+                "--no-stream",
+            ],
+        )
 
         # Verify both settings were applied
         assert result.exit_code == 0
@@ -426,17 +440,16 @@ class TestCLIMetadataTracking:
         mock_create_graph.return_value = mock_graph
 
         # Run with --model haiku
-        result = runner.invoke(app, [
-            "run", "-p", "test", "-m", "autonomous",
-            "--model", "haiku", "--no-stream"
-        ])
+        result = runner.invoke(
+            app, ["run", "-p", "test", "-m", "autonomous", "--model", "haiku", "--no-stream"]
+        )
 
         # Verify model_name in metadata
         assert result.exit_code == 0
         call_kwargs = mock_graph.invoke.call_args[1]
         assert "metadata" in call_kwargs["config"]
         assert "model_name" in call_kwargs["config"]["metadata"]
-        assert call_kwargs["config"]["metadata"]["model_name"] == "claude-haiku-4-5-20251010"
+        assert call_kwargs["config"]["metadata"]["model_name"] == "claude-haiku-4-5-20251001"
 
     @patch("src.autonomous_graph.create_autonomous_graph")
     @patch("src.core.config.get_settings")
@@ -454,10 +467,9 @@ class TestCLIMetadataTracking:
         mock_create_graph.return_value = mock_graph
 
         # Run with --temperature 0.7
-        result = runner.invoke(app, [
-            "run", "-p", "test", "-m", "autonomous",
-            "--temperature", "0.7", "--no-stream"
-        ])
+        result = runner.invoke(
+            app, ["run", "-p", "test", "-m", "autonomous", "--temperature", "0.7", "--no-stream"]
+        )
 
         # Verify temperature in metadata
         assert result.exit_code == 0
@@ -465,4 +477,3 @@ class TestCLIMetadataTracking:
         assert "metadata" in call_kwargs["config"]
         assert "temperature" in call_kwargs["config"]["metadata"]
         assert call_kwargs["config"]["metadata"]["temperature"] == 0.7
-

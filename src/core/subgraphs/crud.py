@@ -246,9 +246,17 @@ async def validate_input(state: CRUDState) -> CRUDState:
 
     # Validate object data with PAN-OS rules
     if state.get("data") and state["operation_type"] in ["create", "update"]:
+        # For updates, merge name from object_name if not in data (for validation)
+        validation_data = state["data"]
+        if state["operation_type"] == "update" and state.get("object_name"):
+            if "name" not in validation_data:
+                validation_data = {**validation_data, "name": state["object_name"]}
+
         # Normalize object type (remove hyphens for validation)
         normalized_type = state["object_type"].replace("-", "_")
-        is_valid, error = validate_object_data(normalized_type, state["data"])
+        is_valid, error = validate_object_data(
+            normalized_type, validation_data, state["operation_type"]
+        )
         if not is_valid:
             logger.warning(f"Invalid object data: {error}")
             return {
@@ -382,6 +390,47 @@ def route_operation(
     }
 
     return operation_map[state["operation_type"]]
+
+
+def _normalize_config_for_xml(object_type: str, config: dict[str, Any]) -> dict[str, Any]:
+    """Normalize config dict from firewall format to build_object_xml format.
+
+    Args:
+        object_type: Type of object
+        config: Configuration dictionary from firewall (via parse_xml_to_dict)
+
+    Returns:
+        Normalized dict suitable for build_object_xml
+    """
+    # For address objects, convert from {name: "x", "ip-netmask": "10.1.1.1"}
+    # to {name: "x", type: "ip-netmask", value: "10.1.1.1"}
+    if object_type == "address":
+        normalized = {"name": config.get("name", "")}
+
+        # Find the address type field
+        for addr_type in ["ip-netmask", "ip-range", "fqdn", "ip-wildcard"]:
+            if addr_type in config:
+                normalized["type"] = addr_type
+                normalized["value"] = config[addr_type]
+                break
+
+        # Copy other fields
+        if "description" in config:
+            normalized["description"] = config["description"]
+
+        # Handle tags (can be dict with member or list)
+        if "tag" in config:
+            tag_data = config["tag"]
+            if isinstance(tag_data, dict) and "member" in tag_data:
+                members = tag_data["member"]
+                normalized["tags"] = members if isinstance(members, list) else [members]
+            elif isinstance(tag_data, list):
+                normalized["tags"] = tag_data
+
+        return normalized
+
+    # For other object types, return as-is
+    return config
 
 
 def build_object_xml(object_type: str, data: dict[str, Any]) -> etree._Element:
@@ -568,7 +617,7 @@ async def create_object(state: CRUDState) -> CRUDState:
                 # Compare desired vs actual
                 from src.core.diff_engine import compare_configs
 
-                diff = compare_configs(state["data"], existing_config)
+                diff = compare_configs(state["data"], existing_config, state["object_type"])
 
                 if diff.is_identical():
                     # Unchanged - skip with detailed message
@@ -649,7 +698,7 @@ async def create_object(state: CRUDState) -> CRUDState:
         # Create via set config
         await set_config(xpath, element, client)
 
-        logger.info(f"Successfully created {state['object_type']}: {object_name}")
+        logger.debug(f"Successfully created {state['object_type']}: {object_name}")
 
         # Invalidate cache after successful create
         store = state.get("store")
@@ -824,7 +873,7 @@ async def update_object(state: CRUDState) -> CRUDState:
 
         from src.core.diff_engine import compare_configs
 
-        diff = compare_configs(update_data, existing_config)
+        diff = compare_configs(update_data, existing_config, state["object_type"])
 
         # Skip if no changes detected
         if diff.is_identical():
@@ -850,13 +899,20 @@ async def update_object(state: CRUDState) -> CRUDState:
         device_context = state.get("device_context")
         xpath = build_xpath(state["object_type"], name=object_name, device_context=device_context)
 
-        # Build XML element with updated data
-        element = build_object_xml(state["object_type"], update_data)
+        # Normalize existing config from firewall format to build_object_xml format
+        normalized_existing = _normalize_config_for_xml(state["object_type"], existing_config)
+
+        # Merge existing config with updates for complete object data
+        # Start with normalized existing (all current values), then overlay updates
+        merged_data = {**normalized_existing, **update_data}
+
+        # Build XML element with merged data (existing + updates)
+        element = build_object_xml(state["object_type"], merged_data)
 
         # Update via edit config
         await edit_config(xpath, element, client)
 
-        logger.info(f"Successfully updated {state['object_type']}: {object_name}")
+        logger.debug(f"Successfully updated {state['object_type']}: {object_name}")
 
         # Invalidate cache after successful update
         store = state.get("store")
@@ -946,7 +1002,7 @@ async def delete_object(state: CRUDState) -> CRUDState:
         # Delete config
         await delete_config(xpath, client)
 
-        logger.info(f"Successfully deleted {state['object_type']}: {state['object_name']}")
+        logger.debug(f"Successfully deleted {state['object_type']}: {state['object_name']}")
 
         # Invalidate cache after successful delete
         store = state.get("store")

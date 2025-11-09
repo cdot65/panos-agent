@@ -162,7 +162,18 @@ async def run_autonomous_async(
                     if node_name == "agent":
                         console.print("[yellow]🤖 Agent thinking...[/yellow]")
                     elif node_name == "tools":
-                        console.print("[cyan]🔧 Executing tools...[/cyan]")
+                        # Extract tool names from messages
+                        tool_names = []
+                        if "messages" in node_output:
+                            for msg in node_output["messages"]:
+                                if hasattr(msg, "name"):
+                                    tool_names.append(msg.name)
+
+                        if tool_names:
+                            tools_str = ", ".join(tool_names)
+                            console.print(f"[cyan]🔧 Executed: {tools_str}[/cyan]")
+                        else:
+                            console.print("[cyan]🔧 Executing tools...[/cyan]")
                     # Keep last result
                     result = node_output
 
@@ -314,7 +325,7 @@ def run(
     thread_id: Optional[str] = typer.Option(
         None, "--thread-id", "-t", help="Thread ID for conversation continuity"
     ),
-    log_level: str = typer.Option("INFO", "--log-level", "-l", help="Logging level"),
+    log_level: str = typer.Option("WARNING", "--log-level", "-l", help="Logging level"),
     no_stream: bool = typer.Option(
         False, "--no-stream", help="Disable streaming output (use for CI/CD)"
     ),
@@ -361,6 +372,10 @@ def run(
         panos-agent run -p "simple_address" -m deterministic
         panos-agent run -p "web_server_setup" -m deterministic
         panos-agent list-workflows  # See all available workflows
+
+        # Logging control (default: WARNING for clean output)
+        panos-agent run -p "List objects" --log-level INFO    # Verbose
+        panos-agent run -p "List objects" --log-level DEBUG   # Maximum detail
 
         # Disable streaming for automation
         panos-agent run -p "List objects" --no-stream

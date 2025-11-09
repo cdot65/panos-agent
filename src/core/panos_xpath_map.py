@@ -549,12 +549,15 @@ def _validate_port(value: str) -> tuple[bool, Optional[str]]:
     return False, f"Invalid port format: {value}"
 
 
-def validate_object_data(object_type: str, data: dict) -> tuple[bool, Optional[str]]:
+def validate_object_data(
+    object_type: str, data: dict, operation_type: str = "create"
+) -> tuple[bool, Optional[str]]:
     """Validate object data against PAN-OS rules.
 
     Args:
         object_type: Type of object
         data: Object data dictionary
+        operation_type: Operation type (create, update, etc.). For updates, only name is required.
 
     Returns:
         Tuple of (is_valid, error_message)
@@ -566,6 +569,11 @@ def validate_object_data(object_type: str, data: dict) -> tuple[bool, Optional[s
 
     # Check required fields
     required = rules.get("required_fields", [])
+
+    # For updates, only require 'name' - other fields can be partial
+    if operation_type == "update":
+        required = ["name"]
+
     for field in required:
         if field not in data or not data[field]:
             return False, f"Missing required field: {field}"

@@ -1,4 +1,5 @@
 {
+  "dependencies": ["."],
   "graphs": {
     "autonomous": {
       "path": "src/autonomous_graph.py:create_autonomous_graph",

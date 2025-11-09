@@ -11,6 +11,7 @@ from typing import Literal
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import SystemMessage
 from langchain_core.messages.base import BaseMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
@@ -332,17 +333,22 @@ async def store_operations(state: AutonomousState, *, store: BaseStore) -> Auton
     return state
 
 
-def create_autonomous_graph(store: BaseStore | None = None, checkpointer=None) -> StateGraph:
+def create_autonomous_graph(config: RunnableConfig) -> StateGraph:
     """Create autonomous ReAct agent graph.
 
     Args:
-        store: Optional BaseStore instance. If None, uses InMemoryStore.
-        checkpointer: Optional checkpointer instance. If None, uses sync SqliteSaver.
+        config: RunnableConfig from LangGraph Studio/CLI.
+                Can contain 'store' and 'checkpointer' in configurable dict.
 
     Returns:
         Compiled StateGraph with checkpointer and store for autonomous mode
     """
     from langgraph.store.memory import InMemoryStore
+
+    # Extract store and checkpointer from config if provided
+    configurable = config.get("configurable", {})
+    store = configurable.get("store")
+    checkpointer = configurable.get("checkpointer")
 
     if store is None:
         store = InMemoryStore()

@@ -109,12 +109,20 @@ LOG_LEVEL=INFO
 # Start LangGraph Studio
 langgraph dev
 
-# Or via CLI command (once implemented)
-panos-agent studio
+# Studio UI:  http://localhost:8000
+# API Server: http://localhost:2024
 
 ```
 
-Then open `<http://localhost:8000`> and select a graph (autonomous or deterministic).
+**Features:**
+- 💬 Interactive chat interface
+- 🔍 Visual tool call inspection
+- ⏰ Time-travel debugging (rewind/fork conversations)
+- 📊 Graph execution visualization
+- 🎯 Multi-graph support (autonomous + deterministic)
+
+**Quick Start:** [QUICKSTART_STUDIO.md](QUICKSTART_STUDIO.md)
+**Full Guide:** [LANGGRAPH_STUDIO.md](LANGGRAPH_STUDIO.md)
 
 ### 5. CLI Usage
 

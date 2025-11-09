@@ -87,7 +87,8 @@ async def autonomous_graph(mock_panos_client):
         from src.core.checkpoint_manager import get_async_checkpointer
 
         checkpointer = await get_async_checkpointer()
-        graph = create_autonomous_graph(checkpointer=checkpointer)
+        factory_config = {"configurable": {"checkpointer": checkpointer}}
+        graph = create_autonomous_graph(factory_config)
         try:
             yield graph
         finally:
@@ -111,7 +112,8 @@ async def deterministic_graph(mock_panos_client):
         from src.deterministic_graph import create_deterministic_graph
 
         checkpointer = await get_async_checkpointer()
-        graph = create_deterministic_graph(checkpointer=checkpointer)
+        factory_config = {"configurable": {"checkpointer": checkpointer}}
+        graph = create_deterministic_graph(factory_config)
         try:
             yield graph
         finally:

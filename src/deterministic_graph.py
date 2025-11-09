@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.store.base import BaseStore
 
@@ -275,17 +276,22 @@ def route_after_load(state: DeterministicState) -> Literal["execute_workflow", "
     return "execute_workflow"
 
 
-def create_deterministic_graph(store: BaseStore | None = None, checkpointer=None) -> StateGraph:
+def create_deterministic_graph(config: RunnableConfig) -> StateGraph:
     """Create deterministic workflow execution graph.
 
     Args:
-        store: Optional BaseStore instance. If None, uses InMemoryStore.
-        checkpointer: Optional checkpointer instance. If None, uses sync SqliteSaver.
+        config: RunnableConfig from LangGraph Studio/CLI.
+                Can contain 'store' and 'checkpointer' in configurable dict.
 
     Returns:
         Compiled StateGraph with checkpointer and store for deterministic mode
     """
     from langgraph.store.memory import InMemoryStore
+
+    # Extract store and checkpointer from config if provided
+    configurable = config.get("configurable", {})
+    store = configurable.get("store")
+    checkpointer = configurable.get("checkpointer")
 
     if store is None:
         store = InMemoryStore()

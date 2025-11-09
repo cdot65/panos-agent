@@ -110,7 +110,9 @@ async def run_autonomous_async(
     checkpointer = await get_async_checkpointer()
 
     try:
-        graph = create_autonomous_graph(checkpointer=checkpointer)
+        # Pass checkpointer via RunnableConfig for graph factory
+        factory_config = {"configurable": {"checkpointer": checkpointer}}
+        graph = create_autonomous_graph(factory_config)
 
         config = {
             "configurable": {
@@ -204,7 +206,9 @@ async def run_deterministic_async(
     checkpointer = await get_async_checkpointer()
 
     try:
-        graph = create_deterministic_graph(checkpointer=checkpointer)
+        # Pass checkpointer via RunnableConfig for graph factory
+        factory_config = {"configurable": {"checkpointer": checkpointer}}
+        graph = create_deterministic_graph(factory_config)
 
         # Format prompt as workflow invocation
         # Expected format: "workflow: <workflow_name>"

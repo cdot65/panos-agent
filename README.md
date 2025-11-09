@@ -1403,6 +1403,91 @@ graph TD
 - **Workflows**: See `panos-agent list-workflows`
 - **LangGraph Studio**: Run `langgraph dev` for visual interface
 
+## Deployment
+
+Deploy the agent to LangSmith Cloud for production use with REST API access, authentication, and persistent storage.
+
+### Prerequisites
+
+- LangSmith account with API access
+- GitHub repository (for source control)
+- `langgraph` CLI installed: `pip install langgraph-cli`
+- LangSmith API key set: `export LANGSMITH_API_KEY=lsv2_pt_...`
+
+### Quick Deploy
+
+```bash
+# Deploy from current directory
+langgraph deploy
+
+# This will:
+# 1. Build your agent into a container
+# 2. Upload to LangSmith Cloud
+# 3. Provide a deployment URL and API endpoint
+```
+
+**Example output:**
+
+```
+✅ Deployment successful!
+Deployment URL: https://smith.langchain.com/deployments/panos-agent-prod
+API Endpoint: https://panos-agent-prod.api.langsmith.com
+```
+
+### Environment Variables
+
+Set these in your LangSmith deployment configuration:
+
+```bash
+# Required
+ANTHROPIC_API_KEY=sk-ant-...       # Claude API key
+PANOS_HOSTNAME=firewall.example.com
+PANOS_USERNAME=automation
+PANOS_PASSWORD=secure-password
+
+# Optional
+LANGSMITH_TRACING=true             # Enable LangSmith tracing
+LANGSMITH_PROJECT=panos-agent-prod # Project name for traces
+```
+
+### Using the Deployed API
+
+Once deployed, interact with your agent via REST API or Python SDK:
+
+#### REST API (curl)
+
+```bash
+# Create a new thread
+curl -X POST https://panos-agent-prod.api.langsmith.com/threads \
+  -H "X-API-Key: $LANGSMITH_API_KEY" \
+  -H "Content-Type: application/json"
+
+# Run the agent
+curl -X POST https://panos-agent-prod.api.langsmith.com/threads/{thread_id}/runs \
+  -H "X-API-Key: $LANGSMITH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": {
+      "messages": [{"role": "user", "content": "List all address objects"}]
+    }
+  }'
+```
+
+#### Python SDK
+
+See `examples/api_usage.py` for complete examples using the LangGraph Python SDK.
+
+### Monitoring and Observability
+
+All deployed agents automatically trace to LangSmith:
+
+- **View traces**: https://smith.langchain.com/projects/{your-project}
+- **Monitor performance**: Response times, token usage, error rates
+- **Debug issues**: Full execution graphs with step-by-step breakdown
+- **Anonymized data**: Sensitive firewall data is automatically redacted
+
+For detailed deployment instructions, API examples, and troubleshooting, see **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
+
 ## Contributing
 
 This is a standalone example project within the broader `paloaltonetworks-automation-examples`

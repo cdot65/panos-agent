@@ -19,11 +19,13 @@ Comprehensive guide for diagnosing and resolving common issues with the PAN-OS A
 ### Firewall Connection Timeout
 
 **Symptom:**
+
 ```
 ❌ Error: PanConnectionTimeout: Connection to 192.168.1.1 timed out
 ```
 
 **Cause:**
+
 - Firewall unreachable (network routing, firewall down)
 - Firewall overloaded or hung
 - Incorrect hostname/IP in configuration
@@ -31,17 +33,20 @@ Comprehensive guide for diagnosing and resolving common issues with the PAN-OS A
 **Resolution:**
 
 1. **Verify connectivity:**
+
    ```bash
    ping 192.168.1.1
    telnet 192.168.1.1 443
    ```
 
 2. **Check credentials:**
+
    ```bash
    panos-agent test-connection
    ```
 
 3. **Verify environment variables:**
+
    ```bash
    cat .env | grep PANOS
    # Should show: PANOS_HOSTNAME, PANOS_USERNAME, PANOS_PASSWORD
@@ -50,6 +55,7 @@ Comprehensive guide for diagnosing and resolving common issues with the PAN-OS A
 4. **Check firewall health** via GUI or another method
 
 5. **Resume after fixing:**
+
    ```bash
    # Use same thread ID to resume
    panos-agent run -p "Continue from where we left off" --thread-id <same-id>
@@ -63,11 +69,13 @@ Connection timeouts are automatically retried 3 times with exponential backoff (
 ### Invalid API Credentials
 
 **Symptom:**
+
 ```
-❌ Error: PanDeviceError: Authentication failed
+❌ Error: PanOSAPIError: Authentication failed (403)
 ```
 
 **Cause:**
+
 - Wrong username or password
 - Account locked or disabled
 - Insufficient permissions
@@ -75,12 +83,14 @@ Connection timeouts are automatically retried 3 times with exponential backoff (
 **Resolution:**
 
 1. **Verify credentials in `.env`:**
+
    ```bash
    PANOS_USERNAME=admin
    PANOS_PASSWORD=your_actual_password
    ```
 
 2. **Test manually via curl:**
+
    ```bash
    curl -k -u admin:password https://192.168.1.1/api/?type=keygen
    ```
@@ -98,6 +108,7 @@ Authentication errors are permanent and fail immediately. Fix credentials and re
 ### Graph Execution Timeout
 
 **Symptom:**
+
 ```
 Timeout Error: Graph execution exceeded 300.0s timeout
 Mode: autonomous
@@ -106,6 +117,7 @@ Prompt preview: Create 100 address objects...
 ```
 
 **Cause:**
+
 - Operation taking longer than timeout allows
 - Agent stuck in reasoning loop
 - Large batch operation
@@ -113,6 +125,7 @@ Prompt preview: Create 100 address objects...
 **Resolution:**
 
 1. **Resume with same thread ID:**
+
    ```bash
    # Agent will continue from last checkpoint
    panos-agent run -p "Continue the operation" --thread-id abc-123-def
@@ -120,12 +133,14 @@ Prompt preview: Create 100 address objects...
 
 2. **Increase timeout (if needed):**
    Edit `src/core/config.py`:
+
    ```python
    TIMEOUT_AUTONOMOUS = 600.0  # Increase to 10 minutes
    TIMEOUT_DETERMINISTIC = 1200.0  # Increase to 20 minutes
    ```
 
 3. **Break into smaller operations:**
+
    ```bash
    # Instead of "Create 100 objects"
    panos-agent run -p "Create 25 address objects batch 1" -m autonomous
@@ -134,6 +149,7 @@ Prompt preview: Create 100 address objects...
    ```
 
 **When to Increase Timeouts:**
+
 - Complex workflows with 10+ steps
 - Large batch operations (50+ objects)
 - Slow firewall hardware or large configs
@@ -143,11 +159,13 @@ Prompt preview: Create 100 address objects...
 ### Commit Timeout
 
 **Symptom:**
+
 ```
 ❌ Error: Commit operation timed out after 180s
 ```
 
 **Cause:**
+
 - Large configuration changes requiring long commit
 - Firewall under heavy load
 - Commit already in progress
@@ -158,11 +176,13 @@ Prompt preview: Create 100 address objects...
 2. **Wait for current commit to finish**, then retry
 3. **Increase commit timeout:**
    Edit `src/core/config.py`:
+
    ```python
    TIMEOUT_COMMIT = 300.0  # Increase to 5 minutes
    ```
 
 4. **Resume workflow:**
+
    ```bash
    panos-agent run -p "Retry the commit" --thread-id <same-id>
    ```
@@ -177,11 +197,13 @@ Commit operations retry once (2 attempts total) with 1.5s backoff. If both fail,
 ### Object Already Exists
 
 **Symptom:**
+
 ```
-❌ Error: PanDeviceError: Object 'web-server' already exists
+❌ Error: PanOSAPIError: Object 'web-server' already exists
 ```
 
 **Cause:**
+
 - Attempting to create duplicate object
 - Previous operation succeeded but appeared to fail
 - Resuming from checkpoint without awareness
@@ -189,17 +211,20 @@ Commit operations retry once (2 attempts total) with 1.5s backoff. If both fail,
 **Resolution:**
 
 1. **Continue with context in same thread:**
+
    ```bash
    # Agent will understand the object exists
    panos-agent run -p "The object already exists, skip it and continue" --thread-id <same-id>
    ```
 
 2. **Or use update instead of create:**
+
    ```bash
    panos-agent run -p "Update the existing web-server object instead" --thread-id <same-id>
    ```
 
 3. **Or start fresh with new thread:**
+
    ```bash
    panos-agent run -p "List address objects" -m autonomous
    # New conversation, no history
@@ -213,11 +238,13 @@ Duplicate object errors are permanent. Use update or skip the object.
 ### Object Not Found
 
 **Symptom:**
+
 ```
-❌ Error: PanDeviceError: Object 'missing-server' does not exist
+❌ Error: PanOSAPIError: Object 'missing-server' does not exist
 ```
 
 **Cause:**
+
 - Typo in object name
 - Object was deleted
 - Wrong search location (vsys, device group)
@@ -225,16 +252,19 @@ Duplicate object errors are permanent. Use update or skip the object.
 **Resolution:**
 
 1. **List objects to verify:**
+
    ```bash
    panos-agent run -p "List all address objects" -m autonomous
    ```
 
 2. **Correct the name:**
+
    ```bash
    panos-agent run -p "I meant 'web-server' not 'missing-server'" --thread-id <same-id>
    ```
 
 3. **Create it first:**
+
    ```bash
    panos-agent run -p "First create the object, then continue" --thread-id <same-id>
    ```
@@ -244,11 +274,13 @@ Duplicate object errors are permanent. Use update or skip the object.
 ### Invalid Configuration
 
 **Symptom:**
+
 ```
-❌ Error: PanDeviceError: Invalid IP address format: '256.1.1.1'
+❌ Error: PanOSValidationError: Invalid IP address format: '256.1.1.1'
 ```
 
 **Cause:**
+
 - Invalid input parameters (IP, port, etc.)
 - Malformed XML/JSON
 - Missing required fields
@@ -256,6 +288,7 @@ Duplicate object errors are permanent. Use update or skip the object.
 **Resolution:**
 
 1. **Correct input and retry:**
+
    ```bash
    panos-agent run -p "Use 192.168.1.1 instead of 256.1.1.1" --thread-id <same-id>
    ```
@@ -275,6 +308,7 @@ Validation errors are permanent. Fix input and retry with same thread ID.
 Agent doesn't remember previous conversation when using same thread ID.
 
 **Cause:**
+
 - Checkpointer using in-memory storage (resets on restart)
 - Typo in thread ID
 - Using different mode (autonomous vs deterministic)
@@ -282,6 +316,7 @@ Agent doesn't remember previous conversation when using same thread ID.
 **Resolution:**
 
 1. **Verify thread ID:**
+
    ```bash
    # Check output from previous run
    Thread ID: abc-123-def
@@ -294,6 +329,7 @@ Agent doesn't remember previous conversation when using same thread ID.
    Currently using `MemorySaver` (in-memory). For persistence across restarts, upgrade to SQLite checkpointer.
 
 3. **LangGraph Studio shows checkpoint history:**
+
    ```bash
    langgraph dev
    # Open http://localhost:8000
@@ -308,6 +344,7 @@ Agent doesn't remember previous conversation when using same thread ID.
 Workflow doesn't resume from failure point.
 
 **Cause:**
+
 - Using different thread ID
 - Starting new workflow instead of resuming
 - Checkpoint corruption
@@ -315,6 +352,7 @@ Workflow doesn't resume from failure point.
 **Resolution:**
 
 1. **Use same thread ID and mode:**
+
    ```bash
    # Original failed run
    panos-agent run -p "complex_workflow" -m deterministic --thread-id wf-001
@@ -326,6 +364,7 @@ Workflow doesn't resume from failure point.
 2. **Check checkpoint state in LangGraph Studio**
 
 3. **If corrupted, start fresh:**
+
    ```bash
    panos-agent run -p "complex_workflow" -m deterministic --thread-id wf-002
    ```
@@ -339,6 +378,7 @@ Workflow doesn't resume from failure point.
 **Current Workaround:**
 
 1. **Use LangGraph Studio:**
+
    ```bash
    langgraph dev
    ```
@@ -351,6 +391,7 @@ Workflow doesn't resume from failure point.
    - Continue from that point
 
 **Future CLI Commands (Planned):**
+
 ```bash
 # View checkpoint history
 panos-agent history --thread-id abc-123
@@ -369,22 +410,26 @@ panos-agent fork --from-thread abc-123 --from-checkpoint xyz --to-thread new-456
 ### Workflow Not Found
 
 **Symptom:**
+
 ```
 ❌ Error: No steps defined for workflow 'missing_workflow'
 ```
 
 **Cause:**
+
 - Typo in workflow name
 - Workflow not defined in `src/workflows/definitions.py`
 
 **Resolution:**
 
 1. **List available workflows:**
+
    ```bash
    panos-agent list-workflows
    ```
 
 2. **Use correct name:**
+
    ```bash
    panos-agent run -p "simple_address" -m deterministic
    ```
@@ -396,6 +441,7 @@ panos-agent fork --from-thread abc-123 --from-checkpoint xyz --to-thread new-456
 ### Workflow Step Failure
 
 **Symptom:**
+
 ```
 📊 Workflow 'web_server_setup' Execution Summary
 Steps: 3/5
@@ -409,6 +455,7 @@ Steps: 3/5
 ```
 
 **Cause:**
+
 - Tool execution failed at specific step
 - Missing dependencies
 - Invalid parameters in workflow definition
@@ -416,6 +463,7 @@ Steps: 3/5
 **Resolution:**
 
 1. **Fix dependency and resume:**
+
    ```bash
    # Create missing dependency
    panos-agent run -p "Create zone 'missing-zone'" -m autonomous
@@ -425,6 +473,7 @@ Steps: 3/5
    ```
 
 2. **Skip failed step manually:**
+
    ```bash
    panos-agent run -p "Skip the security rule and continue" --thread-id <same-id>
    ```
@@ -441,6 +490,7 @@ Steps: 3/5
 Agent takes 30+ seconds to respond.
 
 **Cause:**
+
 - Large firewall configuration (1000+ objects)
 - Slow LLM API response
 - Network latency to firewall
@@ -451,11 +501,13 @@ Agent takes 30+ seconds to respond.
    Currently using `claude-haiku-4-5`. This is already the fastest model.
 
 2. **Reduce log level:**
+
    ```bash
    panos-agent run -p "..." --log-level ERROR
    ```
 
 3. **Check network latency:**
+
    ```bash
    time panos-agent test-connection
    ```
@@ -470,6 +522,7 @@ Agent takes 30+ seconds to respond.
 LangSmith shows high token counts per operation.
 
 **Cause:**
+
 - Large conversation history
 - Many tool calls
 - Verbose responses
@@ -477,12 +530,14 @@ LangSmith shows high token counts per operation.
 **Resolution:**
 
 1. **Start fresh thread** for new tasks:
+
    ```bash
    # Don't reuse thread for unrelated tasks
    panos-agent run -p "New task" -m autonomous  # Auto-generates thread ID
    ```
 
 2. **Use deterministic mode** for predictable operations:
+
    ```bash
    # Deterministic uses fewer tokens (no ReAct loop)
    panos-agent run -p "simple_address" -m deterministic
@@ -502,6 +557,7 @@ LangSmith shows high token counts per operation.
 No traces visible in LangSmith dashboard.
 
 **Cause:**
+
 - Tracing not enabled
 - Wrong API key
 - Wrong project name
@@ -509,6 +565,7 @@ No traces visible in LangSmith dashboard.
 **Resolution:**
 
 1. **Verify environment variables:**
+
    ```bash
    cat .env | grep LANGSMITH
    LANGSMITH_TRACING=true
@@ -517,11 +574,13 @@ No traces visible in LangSmith dashboard.
    ```
 
 2. **Test API key:**
+
    ```bash
    curl -H "x-api-key: ${LANGSMITH_API_KEY}" https://api.smith.langchain.com/info
    ```
 
 3. **Run operation and check:**
+
    ```bash
    panos-agent run -p "Test trace" -m autonomous
    # Check LangSmith UI for new trace
@@ -542,12 +601,14 @@ User concern (valid!).
 **Good news:** All traces are automatically anonymized before sending to LangSmith.
 
 **Anonymized data:**
+
 - PAN-OS API keys → `<panos-api-key>`
 - Anthropic API keys → `<anthropic-api-key>`
 - Password fields → `password: <password>`
 - XML passwords → `<password><redacted></password>`
 
 **Verify anonymization:**
+
 1. Run operation with sensitive data
 2. Check trace in LangSmith
 3. Confirm passwords/keys are masked
@@ -575,11 +636,13 @@ Before filing an issue, try:
 Include:
 
 1. **Command run:**
+
    ```bash
    panos-agent run -p "..." -m autonomous --thread-id abc-123
    ```
 
 2. **Error message:**
+
    ```
    Full error output here
    ```

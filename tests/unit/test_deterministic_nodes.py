@@ -1,13 +1,13 @@
 """Unit tests for deterministic graph nodes."""
 
+from unittest.mock import Mock, patch
+
 import pytest
 from langchain_core.messages import HumanMessage
-from unittest.mock import Mock, patch
 from langgraph.graph import END
 
-from src.deterministic_graph import load_workflow_definition, execute_workflow, route_after_load
 from src.core.state_schemas import DeterministicState
-
+from src.deterministic_graph import execute_workflow, load_workflow_definition, route_after_load
 
 # Sample workflow definitions for testing
 VALID_WORKFLOW = {
@@ -35,8 +35,9 @@ WORKFLOWS_MOCK = {
 class TestLoadWorkflowDefinition:
     """Tests for load_workflow_definition node."""
 
+    @pytest.mark.asyncio
     @patch("src.deterministic_graph.WORKFLOWS", WORKFLOWS_MOCK)
-    def test_load_valid_workflow(self):
+    async def test_load_valid_workflow(self):
         """Test loading a valid workflow."""
         state: DeterministicState = {
             "messages": [HumanMessage(content="simple_address")],
@@ -48,7 +49,7 @@ class TestLoadWorkflowDefinition:
             "error_occurred": False,
         }
 
-        result = load_workflow_definition(state)
+        result = await load_workflow_definition(state)
 
         # Assertions
         assert result["workflow_steps"] == VALID_WORKFLOW["steps"]
@@ -58,8 +59,9 @@ class TestLoadWorkflowDefinition:
         assert result["workflow_complete"] is False
         assert result["error_occurred"] is False
 
+    @pytest.mark.asyncio
     @patch("src.deterministic_graph.WORKFLOWS", WORKFLOWS_MOCK)
-    def test_load_workflow_with_workflow_prefix(self):
+    async def test_load_workflow_with_workflow_prefix(self):
         """Test loading workflow with 'workflow:' prefix in message."""
         state: DeterministicState = {
             "messages": [HumanMessage(content="run workflow: simple_address")],
@@ -71,14 +73,15 @@ class TestLoadWorkflowDefinition:
             "error_occurred": False,
         }
 
-        result = load_workflow_definition(state)
+        result = await load_workflow_definition(state)
 
         # Should successfully load workflow
         assert result["workflow_steps"] == VALID_WORKFLOW["steps"]
         assert result["error_occurred"] is False
 
+    @pytest.mark.asyncio
     @patch("src.deterministic_graph.WORKFLOWS", WORKFLOWS_MOCK)
-    def test_load_nonexistent_workflow(self):
+    async def test_load_nonexistent_workflow(self):
         """Test loading a workflow that doesn't exist."""
         state: DeterministicState = {
             "messages": [HumanMessage(content="nonexistent_workflow")],
@@ -90,7 +93,7 @@ class TestLoadWorkflowDefinition:
             "error_occurred": False,
         }
 
-        result = load_workflow_definition(state)
+        result = await load_workflow_definition(state)
 
         # Should set error flags
         assert result["workflow_steps"] == []
@@ -101,8 +104,9 @@ class TestLoadWorkflowDefinition:
         assert len(result["messages"]) == 2
         assert "not found" in result["messages"][1]["content"].lower()
 
+    @pytest.mark.asyncio
     @patch("src.deterministic_graph.WORKFLOWS", {})
-    def test_load_workflow_empty_workflows(self):
+    async def test_load_workflow_empty_workflows(self):
         """Test loading when no workflows are defined."""
         state: DeterministicState = {
             "messages": [HumanMessage(content="any_workflow")],
@@ -114,7 +118,7 @@ class TestLoadWorkflowDefinition:
             "error_occurred": False,
         }
 
-        result = load_workflow_definition(state)
+        result = await load_workflow_definition(state)
 
         # Should return error with "None" available workflows
         assert result["error_occurred"] is True
@@ -160,17 +164,22 @@ class TestRouteAfterLoad:
 class TestExecuteWorkflow:
     """Tests for execute_workflow node."""
 
+    @pytest.mark.asyncio
     @patch("src.deterministic_graph.create_deterministic_workflow_subgraph")
-    def test_execute_workflow_success(self, mock_create_subgraph):
+    async def test_execute_workflow_success(self, mock_create_subgraph):
         """Test successful workflow execution."""
-        # Mock subgraph
+        from unittest.mock import AsyncMock
+
+        # Mock subgraph with async invoke
         mock_subgraph = Mock()
-        mock_subgraph.invoke.return_value = {
-            "step_outputs": [
-                {"step": "Create address", "status": "success", "result": "✅ Created"}
-            ],
-            "message": "✅ Workflow complete",
-        }
+        mock_subgraph.ainvoke = AsyncMock(
+            return_value={
+                "step_outputs": [
+                    {"step": "Create address", "status": "success", "result": "✅ Created"}
+                ],
+                "message": "✅ Workflow complete",
+            }
+        )
         mock_create_subgraph.return_value = mock_subgraph
 
         state: DeterministicState = {
@@ -185,7 +194,10 @@ class TestExecuteWorkflow:
             "error_occurred": False,
         }
 
-        result = execute_workflow(state)
+        # Mock store
+        mock_store = Mock()
+
+        result = await execute_workflow(state, store=mock_store)
 
         # Assertions
         assert result["workflow_complete"] is True
@@ -195,12 +207,15 @@ class TestExecuteWorkflow:
         assert len(result["messages"]) == 2
         assert "Workflow complete" in result["messages"][1]["content"]
 
+    @pytest.mark.asyncio
     @patch("src.deterministic_graph.create_deterministic_workflow_subgraph")
-    def test_execute_workflow_with_error(self, mock_create_subgraph):
+    async def test_execute_workflow_with_error(self, mock_create_subgraph):
         """Test workflow execution with error."""
+        from unittest.mock import AsyncMock
+
         # Mock subgraph that raises exception
         mock_subgraph = Mock()
-        mock_subgraph.invoke.side_effect = Exception("Test error")
+        mock_subgraph.ainvoke = AsyncMock(side_effect=Exception("Test error"))
         mock_create_subgraph.return_value = mock_subgraph
 
         state: DeterministicState = {
@@ -213,7 +228,10 @@ class TestExecuteWorkflow:
             "error_occurred": False,
         }
 
-        result = execute_workflow(state)
+        # Mock store
+        mock_store = Mock()
+
+        result = await execute_workflow(state, store=mock_store)
 
         # Should set error flags
         assert result["error_occurred"] is True
@@ -221,7 +239,8 @@ class TestExecuteWorkflow:
         # Should have error message
         assert "failed" in result["messages"][1]["content"].lower()
 
-    def test_execute_workflow_skips_on_prior_error(self):
+    @pytest.mark.asyncio
+    async def test_execute_workflow_skips_on_prior_error(self):
         """Test that execute_workflow skips if error already occurred."""
         state: DeterministicState = {
             "messages": [HumanMessage(content="test")],
@@ -233,7 +252,10 @@ class TestExecuteWorkflow:
             "error_occurred": True,
         }
 
-        result = execute_workflow(state)
+        # Mock store
+        mock_store = Mock()
+
+        result = await execute_workflow(state, store=mock_store)
 
         # Should return state unchanged
         assert result == state

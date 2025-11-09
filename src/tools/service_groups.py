@@ -7,16 +7,17 @@ import uuid
 from typing import Optional
 
 from langchain_core.tools import tool
+
 from src.core.subgraphs.crud import create_crud_subgraph
 
 
 @tool
-def service_group_create(
+async def service_group_create(
     name: str,
     members: list[str],
     description: Optional[str] = None,
     tag: Optional[list[str]] = None,
-    mode: str = "strict",
+    mode: str = "skip_if_exists",
 ) -> str:
     """Create a new service group on PAN-OS firewall.
 
@@ -51,7 +52,7 @@ def service_group_create(
         data["tag"] = tag
 
     try:
-        result = crud_graph.invoke(
+        result = await crud_graph.ainvoke(
             {
                 "operation_type": "create",
                 "object_type": "service_group",
@@ -67,7 +68,7 @@ def service_group_create(
 
 
 @tool
-def service_group_read(name: str) -> str:
+async def service_group_read(name: str) -> str:
     """Read an existing service group from PAN-OS firewall.
 
     Args:
@@ -82,7 +83,7 @@ def service_group_read(name: str) -> str:
     crud_graph = create_crud_subgraph()
 
     try:
-        result = crud_graph.invoke(
+        result = await crud_graph.ainvoke(
             {
                 "operation_type": "read",
                 "object_type": "service_group",
@@ -97,7 +98,7 @@ def service_group_read(name: str) -> str:
 
 
 @tool
-def service_group_update(
+async def service_group_update(
     name: str,
     members: Optional[list[str]] = None,
     description: Optional[str] = None,
@@ -131,7 +132,7 @@ def service_group_update(
         return "❌ Error: No fields provided for update"
 
     try:
-        result = crud_graph.invoke(
+        result = await crud_graph.ainvoke(
             {
                 "operation_type": "update",
                 "object_type": "service_group",
@@ -146,7 +147,7 @@ def service_group_update(
 
 
 @tool
-def service_group_delete(name: str) -> str:
+async def service_group_delete(name: str) -> str:
     """Delete a service group from PAN-OS firewall.
 
     Args:
@@ -161,7 +162,7 @@ def service_group_delete(name: str) -> str:
     crud_graph = create_crud_subgraph()
 
     try:
-        result = crud_graph.invoke(
+        result = await crud_graph.ainvoke(
             {
                 "operation_type": "delete",
                 "object_type": "service_group",
@@ -176,7 +177,7 @@ def service_group_delete(name: str) -> str:
 
 
 @tool
-def service_group_list() -> str:
+async def service_group_list() -> str:
     """List all service groups on PAN-OS firewall.
 
     Returns:
@@ -188,7 +189,7 @@ def service_group_list() -> str:
     crud_graph = create_crud_subgraph()
 
     try:
-        result = crud_graph.invoke(
+        result = await crud_graph.ainvoke(
             {
                 "operation_type": "list",
                 "object_type": "service_group",

@@ -16,20 +16,22 @@ Features:
 - Detailed error reporting
 """
 
+import asyncio
 import logging
-import time
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
-from src.core.client import get_firewall_client
-from src.core.retry_helper import with_retry
+
+from src.core.client import get_panos_client
+from src.core.panos_api import PanOSAPIError, PanOSConnectionError, commit, get_job_status
+from src.core.panos_models import JobStatus
 from src.core.retry_policies import PANOS_COMMIT_RETRY_POLICY
 from src.core.state_schemas import CommitState
 
 logger = logging.getLogger(__name__)
 
 
-def validate_commit_input(state: CommitState) -> CommitState:
+async def validate_commit_input(state: CommitState) -> CommitState:
     """Validate commit operation inputs.
 
     Args:
@@ -49,7 +51,7 @@ def validate_commit_input(state: CommitState) -> CommitState:
     }
 
 
-def check_approval_required(state: CommitState) -> CommitState:
+async def check_approval_required(state: CommitState) -> CommitState:
     """Check if human approval is required before commit.
 
     Args:
@@ -86,7 +88,7 @@ def check_approval_required(state: CommitState) -> CommitState:
         }
 
 
-def execute_commit(state: CommitState) -> CommitState:
+async def execute_commit(state: CommitState) -> CommitState:
     """Execute PAN-OS commit operation.
 
     Args:
@@ -104,16 +106,10 @@ def execute_commit(state: CommitState) -> CommitState:
     logger.info(f"Executing commit: {description}")
 
     try:
-        fw = get_firewall_client()
+        client = await get_panos_client()
 
-        # Execute commit with retry
-        def commit_op():
-            return fw.commit(description=description, sync=False)
-
-        commit_result = with_retry(commit_op, max_retries=3)
-
-        # commit() returns a JobResult object
-        job_id = commit_result.id if hasattr(commit_result, "id") else None
+        # Execute commit (returns job ID)
+        job_id = await commit(description, client, partial=False)
 
         logger.info(f"Commit initiated, job ID: {job_id}")
 
@@ -123,6 +119,20 @@ def execute_commit(state: CommitState) -> CommitState:
             "job_status": "PEND",  # Pending
         }
 
+    except PanOSConnectionError as e:
+        logger.error(f"Commit connection failed: {e}")
+        return {
+            **state,
+            "error": f"Connection error: {e}",
+            "message": f"❌ Commit failed: {e}",
+        }
+    except PanOSAPIError as e:
+        logger.error(f"Commit API error: {e}")
+        return {
+            **state,
+            "error": f"API error: {e}",
+            "message": f"❌ Commit failed: {e}",
+        }
     except Exception as e:
         logger.error(f"Commit failed: {e}")
         return {
@@ -132,7 +142,7 @@ def execute_commit(state: CommitState) -> CommitState:
         }
 
 
-def poll_job_status(state: CommitState) -> CommitState:
+async def poll_job_status(state: CommitState) -> CommitState:
     """Poll commit job status until completion.
 
     Args:
@@ -164,71 +174,57 @@ def poll_job_status(state: CommitState) -> CommitState:
     logger.info(f"Polling job {job_id} status...")
 
     try:
-        fw = get_firewall_client()
+        client = await get_panos_client()
 
         # Poll job status
         max_polls = 60  # Max 5 minutes (60 * 5 seconds)
         poll_interval = 5  # 5 seconds
 
         for poll_count in range(max_polls):
-            # Refresh job info
-            # In pan-os-python, we need to use the XML API directly or wait for commit result
-            # For simplicity, we'll use a blocking wait approach
-
-            # Get job status via XML API
             try:
-                import xml.etree.ElementTree as ET
+                # Get job status
+                job_status_response = await get_job_status(job_id, client)
 
-                # Show job status
-                xpath = f"/config/mgt-config/jobs/job[id='{job_id}']"
-                result = fw.xapi.show(xpath=xpath)
+                logger.info(
+                    f"Job {job_id} status: {job_status_response.status} "
+                    f"({job_status_response.progress}%)"
+                )
 
-                # Parse XML response
-                root = ET.fromstring(result)
-                job_elem = root.find(".//job")
-
-                if job_elem is None:
-                    logger.warning(f"Job {job_id} not found in status")
-                    continue
-
-                status = job_elem.findtext("status", "UNKNOWN")
-                progress = job_elem.findtext("progress", "0")
-
-                logger.info(f"Job {job_id} status: {status} ({progress}%)")
-
-                if status == "FIN":
+                if job_status_response.status == JobStatus.FINISHED:
                     # Success
-                    result_text = job_elem.findtext("result", "OK")
-                    logger.info(f"Commit completed: {result_text}")
+                    logger.info(f"Commit completed: {job_status_response.result}")
 
                     return {
                         **state,
                         "job_status": "FIN",
-                        "job_result": {"status": "FIN", "result": result_text},
+                        "job_result": {
+                            "status": "FIN",
+                            "result": job_status_response.result,
+                        },
                         "message": f"✅ Commit completed successfully (job {job_id})",
                     }
 
-                elif status in ["FAIL", "ERROR"]:
+                elif job_status_response.status == JobStatus.FAILED:
                     # Failure
-                    details = job_elem.findtext("details", "Unknown error")
+                    details = job_status_response.details or "Unknown error"
                     logger.error(f"Commit failed: {details}")
 
                     return {
                         **state,
-                        "job_status": status,
-                        "job_result": {"status": status, "details": details},
+                        "job_status": "FAIL",
+                        "job_result": {"status": "FAIL", "details": details},
                         "error": details,
                         "message": f"❌ Commit failed: {details}",
                     }
 
-                elif status in ["PEND", "ACT"]:
+                elif job_status_response.status in [JobStatus.PENDING, JobStatus.ACTIVE]:
                     # Still running
-                    time.sleep(poll_interval)
+                    await asyncio.sleep(poll_interval)
                     continue
 
-            except Exception as poll_error:
+            except PanOSAPIError as poll_error:
                 logger.warning(f"Error polling job status: {poll_error}")
-                time.sleep(poll_interval)
+                await asyncio.sleep(poll_interval)
                 continue
 
         # Timeout
@@ -239,6 +235,13 @@ def poll_job_status(state: CommitState) -> CommitState:
             "message": f"⚠️ Commit job {job_id} polling timeout (check firewall manually)",
         }
 
+    except PanOSConnectionError as e:
+        logger.error(f"Connection error polling commit job: {e}")
+        return {
+            **state,
+            "error": f"Connection error: {e}",
+            "message": f"❌ Error polling commit job: {e}",
+        }
     except Exception as e:
         logger.error(f"Error polling commit job: {e}")
         return {
@@ -248,7 +251,7 @@ def poll_job_status(state: CommitState) -> CommitState:
         }
 
 
-def format_commit_response(state: CommitState) -> CommitState:
+async def format_commit_response(state: CommitState) -> CommitState:
     """Format final commit response.
 
     Args:
@@ -277,7 +280,7 @@ def create_commit_subgraph() -> StateGraph:
     """
     workflow = StateGraph(CommitState)
 
-    # Add nodes
+    # Add nodes (all async now)
     workflow.add_node("validate_commit_input", validate_commit_input)
     workflow.add_node("check_approval_required", check_approval_required)
     workflow.add_node("execute_commit", execute_commit, retry=PANOS_COMMIT_RETRY_POLICY)

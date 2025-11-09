@@ -1,17 +1,19 @@
 """Security policy tools for PAN-OS.
 
 Full CRUD operations for security policy rule management.
+Uses CRUD subgraph for async operations.
 """
 
+import uuid
 from typing import Optional
 
 from langchain_core.tools import tool
-from src.core.client import get_firewall_client
-from src.core.retry_helper import with_retry
+
+from src.core.subgraphs.crud import create_crud_subgraph
 
 
 @tool
-def security_policy_list() -> str:
+async def security_policy_list() -> str:
     """List all security policy rules on PAN-OS firewall.
 
     Returns:
@@ -20,28 +22,25 @@ def security_policy_list() -> str:
     Example:
         security_policy_list()
     """
+    crud_graph = create_crud_subgraph()
+
     try:
-        from panos.policies import SecurityRule
-
-        fw = get_firewall_client()
-        fw.refreshall(SecurityRule)
-        rules = fw.findall(SecurityRule)
-
-        if not rules:
-            return "✅ No security policy rules found"
-
-        rule_list = [{"name": rule.name, "action": rule.action} for rule in rules]
-
-        return f"✅ Found {len(rule_list)} security policy rules:\n" + "\n".join(
-            [f"- {r['name']} (action: {r['action']})" for r in rule_list]
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": "list",
+                "object_type": "security_policy",
+                "object_name": None,
+                "data": None,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
-
+        return result["message"]
     except Exception as e:
         return f"❌ Error: {type(e).__name__}: {e}"
 
 
 @tool
-def security_policy_read(name: str) -> str:
+async def security_policy_read(name: str) -> str:
     """Read an existing security policy rule from PAN-OS firewall.
 
     Args:
@@ -53,29 +52,25 @@ def security_policy_read(name: str) -> str:
     Example:
         security_policy_read(name="allow-web-traffic")
     """
+    crud_graph = create_crud_subgraph()
+
     try:
-        from panos.policies import SecurityRule
-
-        fw = get_firewall_client()
-        fw.refreshall(SecurityRule)
-        rule = fw.find(name, SecurityRule)
-
-        if not rule:
-            return f"❌ Error: Security policy rule '{name}' not found"
-
-        return (
-            f"✅ Retrieved security policy rule: {name}\n"
-            f"Action: {rule.action}\n"
-            f"From zone: {rule.fromzone}\n"
-            f"To zone: {rule.tozone}"
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": "read",
+                "object_type": "security_policy",
+                "object_name": name,
+                "data": None,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
-
+        return result["message"]
     except Exception as e:
         return f"❌ Error: {type(e).__name__}: {e}"
 
 
 @tool
-def security_policy_create(
+async def security_policy_create(
     name: str,
     fromzone: list[str],
     tozone: list[str],
@@ -116,48 +111,41 @@ def security_policy_create(
             description="Allow web traffic from internal network"
         )
     """
+    crud_graph = create_crud_subgraph()
+
+    data = {
+        "name": name,
+        "fromzone": fromzone,
+        "tozone": tozone,
+        "source": source,
+        "destination": destination,
+        "service": service,
+        "action": action,
+        "log_end": log_end,
+    }
+
+    if description:
+        data["description"] = description
+    if tag:
+        data["tag"] = tag
+
     try:
-        from panos.policies import SecurityRule
-
-        fw = get_firewall_client()
-
-        # Check if rule already exists
-        fw.refreshall(SecurityRule)
-        existing = fw.find(name, SecurityRule)
-        if existing:
-            return f"❌ Error: Security policy rule '{name}' already exists"
-
-        # Create rule object
-        rule = SecurityRule(
-            name=name,
-            fromzone=fromzone,
-            tozone=tozone,
-            source=source,
-            destination=destination,
-            service=service,
-            action=action,
-            description=description,
-            tag=tag,
-            log_end=log_end,
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": "create",
+                "object_type": "security_policy",
+                "data": data,
+                "object_name": name,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
         )
-
-        # Add to firewall
-        fw.add(rule)
-
-        # Create on firewall
-        def create_op():
-            rule.create()
-
-        with_retry(create_op, max_retries=3)
-
-        return f"✅ Created security policy rule: {name}"
-
+        return result["message"]
     except Exception as e:
         return f"❌ Error: {type(e).__name__}: {e}"
 
 
 @tool
-def security_policy_update(
+async def security_policy_update(
     name: str,
     fromzone: Optional[list[str]] = None,
     tozone: Optional[list[str]] = None,
@@ -191,61 +179,46 @@ def security_policy_update(
             description="Updated to include 10.2.1.0/24"
         )
     """
+    crud_graph = create_crud_subgraph()
+
+    data = {}
+    if fromzone is not None:
+        data["fromzone"] = fromzone
+    if tozone is not None:
+        data["tozone"] = tozone
+    if source is not None:
+        data["source"] = source
+    if destination is not None:
+        data["destination"] = destination
+    if service is not None:
+        data["service"] = service
+    if action is not None:
+        data["action"] = action
+    if description is not None:
+        data["description"] = description
+    if tag is not None:
+        data["tag"] = tag
+
+    if not data:
+        return "❌ Error: No fields provided for update"
+
     try:
-        from panos.policies import SecurityRule
-
-        fw = get_firewall_client()
-
-        # Find existing rule
-        fw.refreshall(SecurityRule)
-        rule = fw.find(name, SecurityRule)
-        if not rule:
-            return f"❌ Error: Security policy rule '{name}' not found"
-
-        # Update fields
-        updated_fields = []
-        if fromzone is not None:
-            rule.fromzone = fromzone
-            updated_fields.append("fromzone")
-        if tozone is not None:
-            rule.tozone = tozone
-            updated_fields.append("tozone")
-        if source is not None:
-            rule.source = source
-            updated_fields.append("source")
-        if destination is not None:
-            rule.destination = destination
-            updated_fields.append("destination")
-        if service is not None:
-            rule.service = service
-            updated_fields.append("service")
-        if action is not None:
-            rule.action = action
-            updated_fields.append("action")
-        if description is not None:
-            rule.description = description
-            updated_fields.append("description")
-        if tag is not None:
-            rule.tag = tag
-            updated_fields.append("tag")
-
-        if not updated_fields:
-            return "❌ Error: No fields provided for update"
-
-        # Apply changes
-        def update_op():
-            rule.apply()
-
-        with_retry(update_op, max_retries=3)
-
-        return f"✅ Updated security policy rule: {name} (fields: {', '.join(updated_fields)})"
-
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": "update",
+                "object_type": "security_policy",
+                "object_name": name,
+                "data": data,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
+        )
+        return result["message"]
     except Exception as e:
         return f"❌ Error: {type(e).__name__}: {e}"
 
 
 @tool
-def security_policy_delete(name: str) -> str:
+async def security_policy_delete(name: str) -> str:
     """Delete a security policy rule from PAN-OS firewall.
 
     Args:
@@ -257,25 +230,19 @@ def security_policy_delete(name: str) -> str:
     Example:
         security_policy_delete(name="old-rule")
     """
+    crud_graph = create_crud_subgraph()
+
     try:
-        from panos.policies import SecurityRule
-
-        fw = get_firewall_client()
-
-        # Find existing rule
-        fw.refreshall(SecurityRule)
-        rule = fw.find(name, SecurityRule)
-        if not rule:
-            return f"❌ Error: Security policy rule '{name}' not found"
-
-        # Delete rule
-        def delete_op():
-            rule.delete()
-
-        with_retry(delete_op, max_retries=3)
-
-        return f"✅ Deleted security policy rule: {name}"
-
+        result = await crud_graph.ainvoke(
+            {
+                "operation_type": "delete",
+                "object_type": "security_policy",
+                "object_name": name,
+                "data": None,
+            },
+            config={"configurable": {"thread_id": str(uuid.uuid4())}},
+        )
+        return result["message"]
     except Exception as e:
         return f"❌ Error: {type(e).__name__}: {e}"
 

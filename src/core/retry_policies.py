@@ -8,16 +8,20 @@ Retry policies are applied to graph nodes during construction and handle
 transient failures automatically without manual try/except blocks.
 """
 
+import httpx
 from langgraph.types import RetryPolicy
-from panos.errors import PanConnectionTimeout, PanURLError
+
+from src.core.panos_api import PanOSConnectionError
 
 # Retry policy for PAN-OS API operations
 # Applied to nodes that interact with the firewall
 PANOS_RETRY_POLICY = RetryPolicy(
     max_attempts=3,
     retry_on=(
-        PanConnectionTimeout,  # Firewall connection timeouts
-        PanURLError,  # Network/URL errors
+        PanOSConnectionError,  # PAN-OS connection errors
+        httpx.TimeoutException,  # HTTP request timeouts
+        httpx.ConnectError,  # Connection failures
+        httpx.NetworkError,  # Network errors
         ConnectionError,  # Generic connection failures
         TimeoutError,  # Operation timeouts
     ),
@@ -29,13 +33,15 @@ PANOS_RETRY_POLICY = RetryPolicy(
 - **Max attempts:** 3 (initial + 2 retries)
 - **Backoff:** Exponential with factor 2.0 (delays: 2s, 4s, 8s)
 - **Retryable errors:**
-  - `PanConnectionTimeout` - Firewall connection timeouts
-  - `PanURLError` - Network/URL errors (DNS, routing, etc.)
+  - `PanOSConnectionError` - PAN-OS connection errors
+  - `httpx.TimeoutException` - HTTP request timeouts
+  - `httpx.ConnectError` - Connection failures
+  - `httpx.NetworkError` - Network errors
   - `ConnectionError` - Generic connection failures
   - `TimeoutError` - Operation timeouts
 
 **Non-retryable errors:**
-All other exceptions (e.g., `PanDeviceError` for validation/config errors)
+All other exceptions (e.g., `PanOSAPIError` for validation/config errors)
 will fail immediately without retry.
 
 **Usage:**
@@ -59,8 +65,10 @@ LangGraph automatically logs retry attempts. Node execution logs will show:
 PANOS_COMMIT_RETRY_POLICY = RetryPolicy(
     max_attempts=2,  # Commits less likely to benefit from many retries
     retry_on=(
-        PanConnectionTimeout,
-        PanURLError,
+        PanOSConnectionError,
+        httpx.TimeoutException,
+        httpx.ConnectError,
+        httpx.NetworkError,
         ConnectionError,
     ),
     backoff_factor=1.5,  # Shorter backoff: 1.5s, 2.25s

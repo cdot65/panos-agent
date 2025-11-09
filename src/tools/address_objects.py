@@ -8,19 +8,20 @@ import uuid
 from typing import Optional
 
 from langchain_core.tools import tool
+
 from src.core.subgraphs.crud import create_crud_subgraph
 
 
 @tool
-def address_create(
+async def address_create(
     name: str,
     value: str,
     address_type: str = "ip-netmask",
     description: Optional[str] = None,
     tag: Optional[list[str]] = None,
-    mode: str = "strict",
+    mode: str = "skip_if_exists",
 ) -> str:
-    """Create a new address object on PAN-OS firewall.
+    """Create a new address object on PAN-OS firewall (idempotent).
 
     Args:
         name: Name of the address object
@@ -28,7 +29,7 @@ def address_create(
         address_type: Type of address (ip-netmask, ip-range, fqdn) - default: ip-netmask
         description: Optional description
         tag: Optional list of tags to apply
-        mode: Error handling mode - "strict" (fail if exists) or "skip_if_exists" (skip if exists)
+        mode: Error handling mode - "skip_if_exists" (skip if exists, default) or "strict" (fail if exists)
 
     Returns:
         Success/failure message
@@ -51,7 +52,7 @@ def address_create(
         data["tag"] = tag
 
     try:
-        result = crud_graph.invoke(
+        result = await crud_graph.ainvoke(
             {
                 "operation_type": "create",
                 "object_type": "address",
@@ -67,7 +68,7 @@ def address_create(
 
 
 @tool
-def address_read(name: str) -> str:
+async def address_read(name: str) -> str:
     """Read an existing address object from PAN-OS firewall.
 
     Args:
@@ -82,7 +83,7 @@ def address_read(name: str) -> str:
     crud_graph = create_crud_subgraph()
 
     try:
-        result = crud_graph.invoke(
+        result = await crud_graph.ainvoke(
             {
                 "operation_type": "read",
                 "object_type": "address",
@@ -97,7 +98,7 @@ def address_read(name: str) -> str:
 
 
 @tool
-def address_update(
+async def address_update(
     name: str,
     value: Optional[str] = None,
     description: Optional[str] = None,
@@ -131,7 +132,7 @@ def address_update(
         return "❌ Error: No fields provided for update"
 
     try:
-        result = crud_graph.invoke(
+        result = await crud_graph.ainvoke(
             {
                 "operation_type": "update",
                 "object_type": "address",
@@ -146,7 +147,7 @@ def address_update(
 
 
 @tool
-def address_delete(name: str, mode: str = "strict") -> str:
+async def address_delete(name: str, mode: str = "strict") -> str:
     """Delete an address object from PAN-OS firewall.
 
     Args:
@@ -163,7 +164,7 @@ def address_delete(name: str, mode: str = "strict") -> str:
     crud_graph = create_crud_subgraph()
 
     try:
-        result = crud_graph.invoke(
+        result = await crud_graph.ainvoke(
             {
                 "operation_type": "delete",
                 "object_type": "address",
@@ -179,7 +180,7 @@ def address_delete(name: str, mode: str = "strict") -> str:
 
 
 @tool
-def address_list() -> str:
+async def address_list() -> str:
     """List all address objects on PAN-OS firewall.
 
     Returns:
@@ -191,7 +192,7 @@ def address_list() -> str:
     crud_graph = create_crud_subgraph()
 
     try:
-        result = crud_graph.invoke(
+        result = await crud_graph.ainvoke(
             {
                 "operation_type": "list",
                 "object_type": "address",

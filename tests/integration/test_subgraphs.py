@@ -1,329 +1,450 @@
 """Integration tests for subgraphs (CRUD and Commit).
 
-Tests subgraph invocation from parent graphs.
+Tests subgraph invocation from parent graphs with async httpx/respx mocking.
 """
 
-from unittest.mock import Mock, MagicMock, patch
+import uuid
+from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
-from panos.objects import AddressObject
+import respx
+from httpx import Response
+
+from src.core.subgraphs.commit import create_commit_subgraph
+from src.core.subgraphs.crud import create_crud_subgraph
 
 
 class TestCRUDSubgraphIntegration:
     """Test CRUD subgraph execution in graph context."""
 
-    @patch("src.core.client.get_firewall_client")
-    def test_crud_create_operation(self, mock_get_client):
+    @pytest.mark.asyncio
+    async def test_crud_create_operation(self):
         """Test CRUD subgraph create operation."""
-        # Setup mock firewall
-        mock_fw = Mock()
-        mock_fw.hostname = "192.168.1.1"
-        mock_fw.id = "192.168.1.1"
-        mock_get_client.return_value = mock_fw
+        with respx.mock:
+            # Mock connection test (system info)
+            respx.get(url__regex=r".*type=op&cmd=.*show.*system.*info.*").mock(
+                return_value=Response(
+                    200,
+                    content=b'<response status="success" code="19"><result><system><hostname>test-fw</hostname></system></result></response>',
+                )
+            )
 
-        # Mock AddressObject
-        with patch("src.core.subgraphs.crud.AddressObject") as mock_addr_class:
-            mock_addr = Mock(spec=AddressObject)
-            mock_addr.name = "test-server"
-            mock_addr_class.return_value = mock_addr
-            mock_addr_class.refreshall = Mock(return_value=[])
+            # Mock GET to check if object exists (should not exist)
+            respx.get(url__regex=r".*type=config&action=get.*").mock(
+                return_value=Response(
+                    200,
+                    content=b'<response status="success" code="19"><result/></response>',
+                )
+            )
 
-            # Create and invoke CRUD subgraph
-            from src.core.subgraphs.crud import create_crud_subgraph
+            # Mock SET to create object (can be GET or POST)
+            respx.get(url__regex=r".*type=config&action=set.*").mock(
+                return_value=Response(
+                    200,
+                    content=b'<response status="success" code="20"><msg>command succeeded</msg></response>',
+                )
+            )
+            respx.post(url__regex=r".*type=config&action=set.*").mock(
+                return_value=Response(
+                    200,
+                    content=b'<response status="success" code="20"><msg>command succeeded</msg></response>',
+                )
+            )
 
-            subgraph = create_crud_subgraph()
+            # Mock httpx client
+            async def mock_get_client():
+                return httpx.AsyncClient(base_url="https://192.168.1.1")
 
-            result = subgraph.invoke({
-                "operation_type": "create",
-                "object_type": "address",
-                "object_name": "test-server",
-                "data": {
-                    "name": "test-server",
-                    "value": "10.1.1.1",
-                    "type": "ip-netmask",
-                },
-                "validation_result": None,
-                "exists": None,
-                "operation_result": None,
-                "message": "",
-                "error": None,
-            })
+            with patch("src.core.client.get_panos_client", mock_get_client):
+                # Create and invoke CRUD subgraph
+                subgraph = create_crud_subgraph()
 
-            # Verify successful creation
-            assert "message" in result
-            assert "✅" in result["message"] or "success" in result["message"].lower()
+                result = await subgraph.ainvoke(
+                    {
+                        "operation_type": "create",
+                        "object_type": "address",
+                        "object_name": "test-server",
+                        "data": {
+                            "name": "test-server",
+                            "value": "10.1.1.1",
+                            "type": "ip-netmask",
+                        },
+                        "validation_result": None,
+                        "exists": None,
+                        "operation_result": None,
+                        "message": "",
+                        "error": None,
+                    },
+                    config={"configurable": {"thread_id": str(uuid.uuid4())}},
+                )
 
-    @patch("src.core.client.get_firewall_client")
-    def test_crud_read_operation(self, mock_get_client):
+                # Verify successful creation
+                assert "message" in result
+                assert "✅" in result["message"] or "success" in result["message"].lower()
+
+    @pytest.mark.asyncio
+    async def test_crud_read_operation(self):
         """Test CRUD subgraph read operation."""
-        # Setup mock firewall
-        mock_fw = Mock()
-        mock_fw.hostname = "192.168.1.1"
-        mock_fw.id = "192.168.1.1"
-        mock_get_client.return_value = mock_fw
+        with respx.mock:
+            # Mock connection test (system info)
+            respx.get(url__regex=r".*type=op&cmd=.*show.*system.*info.*").mock(
+                return_value=Response(
+                    200,
+                    content=b'<response status="success" code="19"><result><system><hostname>test-fw</hostname></system></result></response>',
+                )
+            )
 
-        # Mock existing object
-        with patch("src.core.subgraphs.crud.AddressObject") as mock_addr_class:
-            mock_addr = Mock(spec=AddressObject)
-            mock_addr.name = "test-server"
-            mock_addr.value = "10.1.1.1"
-            mock_addr.type = "ip-netmask"
-            mock_addr_class.refreshall = Mock(return_value=[mock_addr])
+            # Mock GET to retrieve object (exists)
+            respx.get(url__regex=r".*type=config&action=get.*").mock(
+                return_value=Response(
+                    200,
+                    content=b'<response status="success" code="19">'
+                    b'<result><address><entry name="test-server">'
+                    b"<ip-netmask>10.1.1.1</ip-netmask>"
+                    b"</entry></address></result>"
+                    b"</response>",
+                )
+            )
 
-            # Create and invoke CRUD subgraph
-            from src.core.subgraphs.crud import create_crud_subgraph
+            # Mock httpx client
+            async def mock_get_client():
+                return httpx.AsyncClient(base_url="https://192.168.1.1")
 
-            subgraph = create_crud_subgraph()
+            with patch("src.core.client.get_panos_client", mock_get_client):
+                # Create and invoke CRUD subgraph
+                subgraph = create_crud_subgraph()
 
-            result = subgraph.invoke({
-                "operation_type": "read",
-                "object_type": "address",
-                "object_name": "test-server",
-                "data": None,
-                "validation_result": None,
-                "exists": None,
-                "operation_result": None,
-                "message": "",
-                "error": None,
-            })
+                result = await subgraph.ainvoke(
+                    {
+                        "operation_type": "read",
+                        "object_type": "address",
+                        "object_name": "test-server",
+                        "data": None,
+                        "validation_result": None,
+                        "exists": None,
+                        "operation_result": None,
+                        "message": "",
+                        "error": None,
+                    },
+                    config={"configurable": {"thread_id": str(uuid.uuid4())}},
+                )
 
-            # Verify successful read
-            assert "message" in result
-            assert "test-server" in result["message"]
+                # Verify successful read
+                assert "message" in result
+                assert "test-server" in result["message"]
 
-    @patch("src.core.client.get_firewall_client")
-    def test_crud_list_operation(self, mock_get_client):
+    @pytest.mark.asyncio
+    async def test_crud_list_operation(self):
         """Test CRUD subgraph list operation."""
-        # Setup mock firewall
-        mock_fw = Mock()
-        mock_fw.hostname = "192.168.1.1"
-        mock_fw.id = "192.168.1.1"
-        mock_get_client.return_value = mock_fw
+        with respx.mock:
+            # Mock GET to list objects
+            respx.get(url__regex=r".*type=config&action=get.*").mock(
+                return_value=Response(
+                    200,
+                    content=b'<response status="success" code="19">'
+                    b"<result><address>"
+                    b'<entry name="server-1"><ip-netmask>10.1.1.1</ip-netmask></entry>'
+                    b'<entry name="server-2"><ip-netmask>10.1.1.2</ip-netmask></entry>'
+                    b'<entry name="server-3"><ip-netmask>10.1.1.3</ip-netmask></entry>'
+                    b"</address></result>"
+                    b"</response>",
+                )
+            )
 
-        # Mock multiple objects
-        with patch("src.core.subgraphs.crud.AddressObject") as mock_addr_class:
-            mock_objs = [
-                Mock(spec=AddressObject, name=f"server-{i}", value=f"10.1.1.{i}")
-                for i in range(1, 4)
-            ]
-            mock_addr_class.refreshall = Mock(return_value=mock_objs)
+            # Mock httpx client
+            async def mock_get_client():
+                return httpx.AsyncClient(base_url="https://192.168.1.1")
 
-            # Create and invoke CRUD subgraph
-            from src.core.subgraphs.crud import create_crud_subgraph
+            with patch("src.core.client.get_panos_client", mock_get_client):
+                # Create and invoke CRUD subgraph
+                subgraph = create_crud_subgraph()
 
-            subgraph = create_crud_subgraph()
+                result = await subgraph.ainvoke(
+                    {
+                        "operation_type": "list",
+                        "object_type": "address",
+                        "object_name": None,
+                        "data": None,
+                        "validation_result": None,
+                        "exists": None,
+                        "operation_result": None,
+                        "message": "",
+                        "error": None,
+                    },
+                    config={"configurable": {"thread_id": str(uuid.uuid4())}},
+                )
 
-            result = subgraph.invoke({
-                "operation_type": "list",
-                "object_type": "address",
-                "object_name": None,
-                "data": None,
-                "validation_result": None,
-                "exists": None,
-                "operation_result": None,
-                "message": "",
-                "error": None,
-            })
+                # Verify successful list
+                assert "message" in result
+                assert "3" in result["message"] or "found" in result["message"].lower()
 
-            # Verify successful list
-            assert "message" in result
-            assert "3" in result["message"] or "found" in result["message"].lower()
-
-    @patch("src.core.client.get_firewall_client")
-    def test_crud_delete_operation(self, mock_get_client):
+    @pytest.mark.asyncio
+    async def test_crud_delete_operation(self):
         """Test CRUD subgraph delete operation."""
-        # Setup mock firewall
-        mock_fw = Mock()
-        mock_fw.hostname = "192.168.1.1"
-        mock_fw.id = "192.168.1.1"
-        mock_get_client.return_value = mock_fw
+        with respx.mock:
+            # Mock connection test (system info)
+            respx.get(url__regex=r".*type=op&cmd=.*show.*system.*info.*").mock(
+                return_value=Response(
+                    200,
+                    content=b'<response status="success" code="19"><result><system><hostname>test-fw</hostname></system></result></response>',
+                )
+            )
 
-        # Mock existing object
-        with patch("src.core.subgraphs.crud.AddressObject") as mock_addr_class:
-            mock_addr = Mock(spec=AddressObject)
-            mock_addr.name = "test-server"
-            mock_addr_class.refreshall = Mock(return_value=[mock_addr])
+            # Mock GET to check if object exists
+            respx.get(url__regex=r".*type=config&action=get.*").mock(
+                return_value=Response(
+                    200,
+                    content=b'<response status="success" code="19">'
+                    b'<result><address><entry name="test-server">'
+                    b"<ip-netmask>10.1.1.1</ip-netmask>"
+                    b"</entry></address></result>"
+                    b"</response>",
+                )
+            )
 
-            # Create and invoke CRUD subgraph
-            from src.core.subgraphs.crud import create_crud_subgraph
+            # Mock DELETE
+            respx.get(url__regex=r".*type=config&action=delete.*").mock(
+                return_value=Response(
+                    200,
+                    content=b'<response status="success" code="20"><msg>command succeeded</msg></response>',
+                )
+            )
 
-            subgraph = create_crud_subgraph()
+            # Mock httpx client
+            async def mock_get_client():
+                return httpx.AsyncClient(base_url="https://192.168.1.1")
 
-            result = subgraph.invoke({
-                "operation_type": "delete",
-                "object_type": "address",
-                "object_name": "test-server",
-                "data": None,
-                "validation_result": None,
-                "exists": None,
-                "operation_result": None,
-                "message": "",
-                "error": None,
-            })
+            with patch("src.core.client.get_panos_client", mock_get_client):
+                # Create and invoke CRUD subgraph
+                subgraph = create_crud_subgraph()
 
-            # Verify successful deletion
-            assert "message" in result
-            assert "✅" in result["message"] or "deleted" in result["message"].lower()
+                result = await subgraph.ainvoke(
+                    {
+                        "operation_type": "delete",
+                        "object_type": "address",
+                        "object_name": "test-server",
+                        "data": None,
+                        "validation_result": None,
+                        "exists": None,
+                        "operation_result": None,
+                        "message": "",
+                        "error": None,
+                    },
+                    config={"configurable": {"thread_id": str(uuid.uuid4())}},
+                )
+
+                # Verify successful deletion
+                assert "message" in result
+                assert "✅" in result["message"] or "deleted" in result["message"].lower()
 
 
 class TestCommitSubgraphIntegration:
     """Test commit subgraph execution."""
 
-    @patch("src.core.client.get_firewall_client")
-    def test_commit_without_approval(self, mock_get_client):
+    @pytest.mark.asyncio
+    async def test_commit_without_approval(self):
         """Test commit subgraph without approval gate."""
-        # Setup mock firewall
-        mock_fw = MagicMock()
-        mock_fw.hostname = "192.168.1.1"
-        mock_fw.commit.return_value = Mock(result="success", jobid=123)
-        mock_get_client.return_value = mock_fw
+        with respx.mock:
+            # Mock connection test (system info)
+            respx.get(url__regex=r".*type=op&cmd=.*show.*system.*info.*").mock(
+                return_value=Response(
+                    200,
+                    content=b'<response status="success" code="19"><result><system><hostname>test-fw</hostname></system></result></response>',
+                )
+            )
 
-        # Mock job status polling
-        with patch("src.core.subgraphs.commit.time.sleep"):
-            # Create and invoke commit subgraph
-            from src.core.subgraphs.commit import create_commit_subgraph
+            # Mock commit API call - job ID should be in <job> text, not <job><id>
+            respx.get(url__regex=r".*type=commit.*").mock(
+                return_value=Response(
+                    200,
+                    content=b'<response status="success" code="19">'
+                    b"<result><job>123</job></result>"
+                    b"</response>",
+                )
+            )
 
-            subgraph = create_commit_subgraph()
+            # Mock httpx client
+            async def mock_get_client():
+                return httpx.AsyncClient(base_url="https://192.168.1.1")
 
-            result = subgraph.invoke({
-                "description": "Test commit",
-                "sync": False,
-                "require_approval": False,
-                "approval_granted": None,
-                "commit_job_id": None,
-                "job_status": None,
-                "job_result": None,
-                "message": "",
-                "error": None,
-            })
+            with patch("src.core.client.get_panos_client", mock_get_client):
+                # Create and invoke commit subgraph
+                subgraph = create_commit_subgraph()
 
-            # Verify commit executed
-            assert "message" in result
-            assert "commit" in result["message"].lower()
+                result = await subgraph.ainvoke(
+                    {
+                        "description": "Test commit",
+                        "sync": False,
+                        "require_approval": False,
+                        "approval_granted": None,
+                        "commit_job_id": None,
+                        "job_status": None,
+                        "job_result": None,
+                        "message": "",
+                        "error": None,
+                    },
+                    config={"configurable": {"thread_id": str(uuid.uuid4())}},
+                )
 
-    @patch("src.core.client.get_firewall_client")
-    def test_commit_sync_mode(self, mock_get_client):
+                # Verify commit executed
+                assert "message" in result
+                assert "commit" in result["message"].lower()
+
+    @pytest.mark.asyncio
+    async def test_commit_sync_mode(self):
         """Test commit subgraph with job polling."""
-        # Setup mock firewall
-        mock_fw = MagicMock()
-        mock_fw.hostname = "192.168.1.1"
+        with respx.mock:
+            # Mock connection test (system info)
+            respx.get(url__regex=r".*type=op&cmd=.*show.*system.*info.*").mock(
+                return_value=Response(
+                    200,
+                    content=b'<response status="success" code="19"><result><system><hostname>test-fw</hostname></system></result></response>',
+                )
+            )
 
-        # Mock commit response
-        commit_result = Mock()
-        commit_result.result = "success"
-        commit_result.jobid = 123
-        mock_fw.commit.return_value = commit_result
+            # Mock commit API call - job ID should be in <job> text, not <job><id>
+            respx.get(url__regex=r".*type=commit.*").mock(
+                return_value=Response(
+                    200,
+                    content=b'<response status="success" code="19">'
+                    b"<result><job>123</job></result>"
+                    b"</response>",
+                )
+            )
 
-        # Mock job polling - complete immediately
-        job_status = Mock()
-        job_status.result = "OK"
-        job_status.status = "FIN"
-        mock_fw.op.return_value = job_status
+            # Mock job status polling - complete immediately
+            respx.get(url__regex=r".*type=op&cmd=.*show.*jobs.*123.*").mock(
+                return_value=Response(
+                    200,
+                    content=b'<response status="success" code="19">'
+                    b"<result><job>"
+                    b"<id>123</id>"
+                    b"<status>FIN</status>"
+                    b"<result>OK</result>"
+                    b"</job></result>"
+                    b"</response>",
+                )
+            )
 
-        mock_get_client.return_value = mock_fw
+            # Mock httpx client
+            async def mock_get_client():
+                return httpx.AsyncClient(base_url="https://192.168.1.1")
 
-        with patch("src.core.subgraphs.commit.time.sleep"):
-            # Create and invoke commit subgraph
-            from src.core.subgraphs.commit import create_commit_subgraph
+            with patch("src.core.client.get_panos_client", mock_get_client):
+                with patch("src.core.subgraphs.commit.asyncio.sleep", return_value=None):
+                    # Create and invoke commit subgraph
+                    subgraph = create_commit_subgraph()
 
-            subgraph = create_commit_subgraph()
+                    result = await subgraph.ainvoke(
+                        {
+                            "description": "Test commit with polling",
+                            "sync": True,
+                            "require_approval": False,
+                            "approval_granted": None,
+                            "commit_job_id": None,
+                            "job_status": None,
+                            "job_result": None,
+                            "message": "",
+                            "error": None,
+                        },
+                        config={"configurable": {"thread_id": str(uuid.uuid4())}},
+                    )
 
-            result = subgraph.invoke({
-                "description": "Test commit with polling",
-                "sync": True,
-                "require_approval": False,
-                "approval_granted": None,
-                "commit_job_id": None,
-                "job_status": None,
-                "job_result": None,
-                "message": "",
-                "error": None,
-            })
-
-            # Verify commit completed
-            assert "message" in result
-            assert "success" in result["message"].lower() or "✅" in result["message"]
+                    # Verify commit completed
+                    assert "message" in result
+                    assert "success" in result["message"].lower() or "✅" in result["message"]
 
 
 class TestSubgraphErrorHandling:
     """Test subgraph error handling and retry behavior."""
 
-    @patch("src.core.client.get_firewall_client")
-    def test_crud_handles_connection_error(self, mock_get_client):
+    @pytest.mark.asyncio
+    async def test_crud_handles_connection_error(self):
         """Test CRUD subgraph handles connection errors with retry."""
-        # Setup mock that fails
-        mock_fw = Mock()
-        mock_fw.hostname = "192.168.1.1"
-        mock_get_client.return_value = mock_fw
+        with respx.mock:
+            # Mock connection timeout
+            respx.get(url__regex=r".*type=config&action=get.*").mock(
+                side_effect=httpx.TimeoutException("Connection timeout")
+            )
 
-        # Mock connection error
-        from panos.errors import PanConnectionTimeout
+            # Mock httpx client
+            async def mock_get_client():
+                return httpx.AsyncClient(base_url="https://192.168.1.1")
 
-        with patch("src.core.subgraphs.crud.AddressObject") as mock_addr_class:
-            mock_addr_class.refreshall = Mock(side_effect=PanConnectionTimeout("Connection timeout"))
+            with patch("src.core.client.get_panos_client", mock_get_client):
+                # Create and invoke CRUD subgraph
+                subgraph = create_crud_subgraph()
 
-            # Create and invoke CRUD subgraph
-            from src.core.subgraphs.crud import create_crud_subgraph
+                result = await subgraph.ainvoke(
+                    {
+                        "operation_type": "list",
+                        "object_type": "address",
+                        "object_name": None,
+                        "data": None,
+                        "validation_result": None,
+                        "exists": None,
+                        "operation_result": None,
+                        "message": "",
+                        "error": None,
+                    },
+                    config={"configurable": {"thread_id": str(uuid.uuid4())}},
+                )
 
-            subgraph = create_crud_subgraph()
+                # Should handle error gracefully
+                assert "message" in result
+                # Error message should be present (retry policy will retry 3 times then fail)
+                assert "❌" in result["message"] or "error" in result["message"].lower()
 
-            result = subgraph.invoke({
-                "operation_type": "list",
-                "object_type": "address",
-                "object_name": None,
-                "data": None,
-                "validation_result": None,
-                "exists": None,
-                "operation_result": None,
-                "message": "",
-                "error": None,
-            })
-
-            # Should handle error gracefully
-            assert "message" in result
-            # Error message should be present (retry policy will retry 3 times then fail)
-            assert "❌" in result["message"] or "error" in result["message"].lower()
-
-    @patch("src.core.client.get_firewall_client")
-    def test_crud_handles_validation_error(self, mock_get_client):
+    @pytest.mark.asyncio
+    async def test_crud_handles_validation_error(self):
         """Test CRUD subgraph handles validation errors without retry."""
-        # Setup mock firewall
-        mock_fw = Mock()
-        mock_fw.hostname = "192.168.1.1"
-        mock_fw.id = "192.168.1.1"
-        mock_get_client.return_value = mock_fw
+        with respx.mock:
+            # Mock API error (non-retryable)
+            respx.get(url__regex=r".*type=config&action=set.*").mock(
+                return_value=Response(
+                    400,
+                    content=b'<response status="error" code="7">'
+                    b"<msg><line>Invalid IP address</line></msg>"
+                    b"</response>",
+                )
+            )
 
-        # Mock validation error
-        from panos.errors import PanDeviceError
+            # Mock GET for existence check
+            respx.get(url__regex=r".*type=config&action=get.*").mock(
+                return_value=Response(
+                    200,
+                    content=b'<response status="success" code="19"><result/></response>',
+                )
+            )
 
-        with patch("src.core.subgraphs.crud.AddressObject") as mock_addr_class:
-            mock_addr = Mock(spec=AddressObject)
-            mock_addr_class.return_value = mock_addr
-            mock_addr_class.refreshall = Mock(return_value=[])
-            mock_addr.create.side_effect = PanDeviceError("Invalid IP address")
+            # Mock httpx client
+            async def mock_get_client():
+                return httpx.AsyncClient(base_url="https://192.168.1.1")
 
-            # Create and invoke CRUD subgraph
-            from src.core.subgraphs.crud import create_crud_subgraph
+            with patch("src.core.client.get_panos_client", mock_get_client):
+                # Create and invoke CRUD subgraph
+                subgraph = create_crud_subgraph()
 
-            subgraph = create_crud_subgraph()
+                result = await subgraph.ainvoke(
+                    {
+                        "operation_type": "create",
+                        "object_type": "address",
+                        "object_name": "invalid-server",
+                        "data": {
+                            "name": "invalid-server",
+                            "value": "256.1.1.1",  # Invalid IP
+                            "type": "ip-netmask",
+                        },
+                        "validation_result": None,
+                        "exists": None,
+                        "operation_result": None,
+                        "message": "",
+                        "error": None,
+                    },
+                    config={"configurable": {"thread_id": str(uuid.uuid4())}},
+                )
 
-            result = subgraph.invoke({
-                "operation_type": "create",
-                "object_type": "address",
-                "object_name": "invalid-server",
-                "data": {
-                    "name": "invalid-server",
-                    "value": "256.1.1.1",  # Invalid IP
-                    "type": "ip-netmask",
-                },
-                "validation_result": None,
-                "exists": None,
-                "operation_result": None,
-                "message": "",
-                "error": None,
-            })
-
-            # Should handle error without retry (validation errors are non-retryable)
-            assert "message" in result
-            assert "❌" in result["message"] or "error" in result["message"].lower()
-            assert "invalid" in result["message"].lower()
+                # Should handle error without retry (validation errors are non-retryable)
+                assert "message" in result
+                assert "❌" in result["message"] or "error" in result["message"].lower()

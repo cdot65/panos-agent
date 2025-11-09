@@ -10,6 +10,7 @@ from typing import Optional  # noqa: F401
 import typer
 from rich.console import Console
 from rich.table import Table
+
 from src.core.checkpoint_manager import get_checkpointer
 
 logger = logging.getLogger(__name__)
@@ -302,6 +303,7 @@ def prune_old(
 
         # Show database size
         import os
+
         from src.core.checkpoint_manager import get_checkpoint_db_path
 
         db_path = get_checkpoint_db_path()

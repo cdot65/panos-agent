@@ -11,6 +11,7 @@ from typing import Literal
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.store.base import BaseStore
+
 from src.core.checkpoint_manager import get_checkpointer
 from src.core.memory_store import store_workflow_execution
 from src.core.state_schemas import DeterministicState
@@ -26,7 +27,7 @@ except ImportError:
     WORKFLOWS = {}
 
 
-def load_workflow_definition(state: DeterministicState) -> DeterministicState:
+async def load_workflow_definition(state: DeterministicState) -> DeterministicState:
     """Load workflow definition from user message.
 
     Extracts workflow name from last message and loads definition.
@@ -50,6 +51,17 @@ def load_workflow_definition(state: DeterministicState) -> DeterministicState:
         workflow_name = user_input.strip()
 
     logger.info(f"Loading workflow: {workflow_name}")
+
+    # If workflow_steps are already provided in state, use them (for testing/direct invocation)
+    if "workflow_steps" in state and state["workflow_steps"]:
+        return {
+            **state,
+            "current_step_index": 0,
+            "step_results": [],
+            "continue_workflow": True,
+            "workflow_complete": False,
+            "error_occurred": False,
+        }
 
     # Look up workflow definition
     if workflow_name not in WORKFLOWS:
@@ -84,7 +96,7 @@ def load_workflow_definition(state: DeterministicState) -> DeterministicState:
     }
 
 
-def execute_workflow(state: DeterministicState, *, store: BaseStore) -> DeterministicState:
+async def execute_workflow(state: DeterministicState, *, store: BaseStore) -> DeterministicState:
     """Execute workflow using deterministic workflow subgraph.
 
     Stores workflow execution history in memory after completion.
@@ -114,9 +126,9 @@ def execute_workflow(state: DeterministicState, *, store: BaseStore) -> Determin
     execution_id = str(uuid.uuid4())
     started_at = datetime.utcnow().isoformat() + "Z"
 
-    # Invoke workflow subgraph
+    # Invoke workflow subgraph (async)
     try:
-        result = workflow_subgraph.invoke(
+        result = await workflow_subgraph.ainvoke(
             {
                 "workflow_name": workflow_name,
                 "workflow_params": {},  # Could extract from user message
@@ -217,11 +229,12 @@ def route_after_load(state: DeterministicState) -> Literal["execute_workflow", "
     return "execute_workflow"
 
 
-def create_deterministic_graph(store: BaseStore | None = None) -> StateGraph:
+def create_deterministic_graph(store: BaseStore | None = None, checkpointer=None) -> StateGraph:
     """Create deterministic workflow execution graph.
 
     Args:
         store: Optional BaseStore instance. If None, uses InMemoryStore.
+        checkpointer: Optional checkpointer instance. If None, uses sync SqliteSaver.
 
     Returns:
         Compiled StateGraph with checkpointer and store for deterministic mode
@@ -230,6 +243,9 @@ def create_deterministic_graph(store: BaseStore | None = None) -> StateGraph:
 
     if store is None:
         store = InMemoryStore()
+
+    if checkpointer is None:
+        checkpointer = get_checkpointer()
 
     workflow = StateGraph(DeterministicState)
 
@@ -253,6 +269,5 @@ def create_deterministic_graph(store: BaseStore | None = None) -> StateGraph:
     # End after execution
     workflow.add_edge("execute_workflow", END)
 
-    # Compile with persistent SQLite checkpointer and store for memory
-    checkpointer = get_checkpointer()
+    # Compile with checkpointer and store for memory
     return workflow.compile(checkpointer=checkpointer, store=store)

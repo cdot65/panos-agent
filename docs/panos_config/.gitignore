@@ -1,0 +1,9 @@
+# Ignore actual firewall configs (sensitive)
+running-config.xml
+*-config.xml
+
+# Allow sample/template configs
+!*-sample.xml
+!*-template.xml
+!README.md
+

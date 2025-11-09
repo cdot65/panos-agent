@@ -1,29 +1,31 @@
 """Unit tests for subgraph node functions."""
 
-import pytest
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
+import pytest
+
+from src.core.state_schemas import CommitState, CRUDState, DeterministicWorkflowState
+from src.core.subgraphs.commit import (
+    check_approval_required,
+    validate_commit_input,
+)
 from src.core.subgraphs.crud import (
-    validate_input,
     check_existence,
     route_operation,
-)
-from src.core.subgraphs.commit import (
-    validate_commit_input,
-    check_approval_required,
+    validate_input,
 )
 from src.core.subgraphs.deterministic import (
-    load_workflow,
     execute_step,
+    load_workflow,
     route_after_evaluation,
 )
-from src.core.state_schemas import CRUDState, CommitState, DeterministicWorkflowState
 
 
 class TestCRUDSubgraph:
     """Tests for CRUD subgraph nodes."""
 
-    def test_validate_input_success_create(self):
+    @pytest.mark.asyncio
+    async def test_validate_input_success_create(self):
         """Test validation passes for valid create operation."""
         state: CRUDState = {
             "operation_type": "create",
@@ -42,7 +44,8 @@ class TestCRUDSubgraph:
         assert result["validation_result"] == "✅ Validation passed"
         assert result["error"] is None
 
-    def test_validate_input_missing_data_for_create(self):
+    @pytest.mark.asyncio
+    async def test_validate_input_missing_data_for_create(self):
         """Test validation fails when data missing for create."""
         state: CRUDState = {
             "operation_type": "create",
@@ -61,7 +64,8 @@ class TestCRUDSubgraph:
         assert "Missing required 'data' field" in result["validation_result"]
         assert result["error"] is not None
 
-    def test_validate_input_missing_object_name_for_read(self):
+    @pytest.mark.asyncio
+    async def test_validate_input_missing_object_name_for_read(self):
         """Test validation fails when object_name missing for read."""
         state: CRUDState = {
             "operation_type": "read",
@@ -80,7 +84,8 @@ class TestCRUDSubgraph:
         assert "Missing required 'object_name' field" in result["validation_result"]
         assert result["error"] is not None
 
-    def test_validate_input_unsupported_object_type(self):
+    @pytest.mark.asyncio
+    async def test_validate_input_unsupported_object_type(self):
         """Test validation fails for unsupported object type."""
         state: CRUDState = {
             "operation_type": "create",
@@ -99,7 +104,7 @@ class TestCRUDSubgraph:
         assert "Unsupported object_type" in result["validation_result"]
         assert result["error"] is not None
 
-    @pytest.mark.skip(reason="pan-os-python mocking too complex - needs integration test")
+    @pytest.mark.skip(reason="httpx API mocking complex - covered by integration tests")
     @patch("src.core.subgraphs.crud.get_firewall_client")
     @patch("src.core.subgraphs.crud.AddressObject")
     def test_check_existence_object_exists(self, mock_address_class, mock_get_client):
@@ -133,7 +138,7 @@ class TestCRUDSubgraph:
         assert result["exists"] is True
         assert result["error"] is None
 
-    @pytest.mark.skip(reason="pan-os-python mocking too complex - needs integration test")
+    @pytest.mark.skip(reason="httpx API mocking complex - covered by integration tests")
     @patch("src.core.subgraphs.crud.get_firewall_client")
     @patch("src.core.subgraphs.crud.AddressObject")
     def test_check_existence_object_not_exists(self, mock_address_class, mock_get_client):
@@ -205,7 +210,8 @@ class TestCRUDSubgraph:
 class TestCommitSubgraph:
     """Tests for Commit subgraph nodes."""
 
-    def test_validate_commit_input_success(self):
+    @pytest.mark.asyncio
+    async def test_validate_commit_input_success(self):
         """Test validation passes for valid commit."""
         state: CommitState = {
             "description": "Test commit",
@@ -224,7 +230,8 @@ class TestCommitSubgraph:
 
         assert "✅" in result["message"] or result["error"] is None
 
-    def test_check_approval_not_required_by_default(self):
+    @pytest.mark.asyncio
+    async def test_check_approval_not_required_by_default(self):
         """Test that approval is not required by default."""
         state: CommitState = {
             "description": "Normal commit",
@@ -242,7 +249,8 @@ class TestCommitSubgraph:
         # When require_approval is False or not set, approval_granted should be True
         assert result.get("approval_granted") is True
 
-    def test_check_approval_not_required_when_force_false(self):
+    @pytest.mark.asyncio
+    async def test_check_approval_not_required_when_force_false(self):
         """Test that approval not required when force=False."""
         state: CommitState = {
             "description": "Normal commit",
@@ -268,9 +276,7 @@ class TestDeterministicWorkflowSubgraph:
         state: DeterministicWorkflowState = {
             "workflow_name": "test_workflow",
             "workflow_params": {},
-            "steps": [
-                {"name": "Step 1", "type": "tool_call", "tool": "address_create"}
-            ],
+            "steps": [{"name": "Step 1", "type": "tool_call", "tool": "address_create"}],
             "current_step": 0,
             "step_outputs": [],
             "overall_result": None,

@@ -1,13 +1,40 @@
 """Pytest configuration and shared fixtures for PAN-OS agent tests."""
 
-from unittest.mock import MagicMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
+import httpx
 import pytest
+from httpx import Response
+
+
+@pytest.fixture
+async def mock_httpx_client():
+    """Mock httpx AsyncClient for PAN-OS API testing.
+
+    Returns:
+        AsyncMock of httpx.AsyncClient with successful responses
+    """
+    client = AsyncMock(spec=httpx.AsyncClient)
+
+    # Mock successful API response
+    success_response = Response(
+        200,
+        content=b'<response status="success" code="20"><msg>command succeeded</msg></response>',
+    )
+
+    client.get = AsyncMock(return_value=success_response)
+    client.post = AsyncMock(return_value=success_response)
+    client.aclose = AsyncMock()
+
+    return client
 
 
 @pytest.fixture
 def mock_firewall():
-    """Mock PAN-OS firewall client."""
+    """Mock PAN-OS firewall client (legacy - for backward compatibility).
+
+    Note: New tests should use mock_httpx_client instead.
+    """
     fw = MagicMock()
     fw.hostname = "192.168.1.1"
     fw.version = "10.2.3"

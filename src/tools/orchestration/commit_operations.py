@@ -9,7 +9,7 @@ from langchain_core.tools import tool
 
 
 @tool
-def commit_changes(
+async def commit_changes(
     description: str = "Changes via PAN-OS Agent",
     sync: bool = True,
     require_approval: bool = False,
@@ -42,7 +42,7 @@ def commit_changes(
     commit_graph = create_commit_subgraph()
 
     try:
-        result = commit_graph.invoke(
+        result = await commit_graph.ainvoke(
             {
                 "description": description,
                 "sync": sync,

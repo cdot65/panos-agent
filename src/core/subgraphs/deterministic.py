@@ -6,19 +6,32 @@ Supports HITL approval gates for critical operations.
 """
 
 import logging
-from typing import Literal
+import sys
+from typing import Literal, Optional
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
-from panos.errors import PanConnectionTimeout, PanDeviceError, PanURLError
+
 from src.core.config import get_settings
+from src.core.panos_api import PanOSAPIError, PanOSConnectionError
 from src.core.retry_policies import PANOS_RETRY_POLICY
 from src.core.state_schemas import DeterministicWorkflowState
 from src.tools import ALL_TOOLS
 
 logger = logging.getLogger(__name__)
+
+
+def is_cli_mode() -> bool:
+    """Detect if running in CLI mode (terminal) vs Studio/API mode.
+
+    Returns:
+        True if running in CLI with interactive terminal, False otherwise
+    """
+    # Check if stdin is a TTY (interactive terminal)
+    return sys.stdin.isatty()
 
 
 def load_workflow(state: DeterministicWorkflowState) -> DeterministicWorkflowState:
@@ -31,7 +44,7 @@ def load_workflow(state: DeterministicWorkflowState) -> DeterministicWorkflowSta
         Updated state with initialized steps
     """
     workflow_name = state["workflow_name"]
-    logger.info(f"Loading workflow: {workflow_name}")
+    logger.debug(f"Loading workflow: {workflow_name}")
 
     # Workflows will be defined separately and passed in workflow_params
     steps = state.get("steps", [])
@@ -49,15 +62,68 @@ def load_workflow(state: DeterministicWorkflowState) -> DeterministicWorkflowSta
     }
 
 
-def execute_step(state: DeterministicWorkflowState) -> DeterministicWorkflowState:
-    """Execute current workflow step.
+async def execute_step(
+    state: DeterministicWorkflowState, config: Optional[RunnableConfig] = None
+) -> DeterministicWorkflowState:
+    """Execute current workflow step with recursion tracking.
 
     Args:
         state: Current workflow state
+        config: Optional RunnableConfig with recursion limit and step tracking
 
     Returns:
         Updated state with step execution result
     """
+    # Get recursion metadata from config
+    config_dict = config or {}
+    metadata = config_dict.get("metadata", {})
+
+    # Try to get LangGraph step count, fall back to state tracking
+    # Each workflow step involves multiple graph steps (execute -> evaluate -> route -> increment)
+    # So we estimate: current_step * 4 (approximate graph depth per workflow step)
+    langgraph_step = metadata.get("langgraph_step", 0)
+    if langgraph_step == 0:
+        # Fallback: estimate from workflow step index
+        # Each workflow step typically involves ~4 graph steps
+        langgraph_step = state["current_step"] * 4
+
+    recursion_limit = config_dict.get("recursion_limit", 25)
+    threshold = int(recursion_limit * 0.6)  # 60% threshold (leaves room for cleanup nodes)
+
+    # Check if approaching limit
+    if langgraph_step >= threshold:
+        logger.warning(
+            f"Approaching recursion limit ({langgraph_step}/{recursion_limit}) - "
+            f"stopping workflow gracefully"
+        )
+        return {
+            **state,
+            "overall_result": {
+                "decision": "partial",
+                "reason": f"Approaching recursion limit ({langgraph_step}/{recursion_limit})",
+                "success": False,
+            },
+            "message": (
+                f"⚠️ Workflow partially completed: reached {langgraph_step}/{recursion_limit} steps. "
+                f"Workflow stopped gracefully to prevent recursion limit error."
+            ),
+        }
+
+    # Progress logging every 5 steps
+    if langgraph_step > 0 and langgraph_step % 5 == 0:
+        logger.info(f"Workflow progress: {langgraph_step}/{recursion_limit} steps")
+
+    # Milestone logging at 50%
+    if langgraph_step == int(recursion_limit * 0.5):
+        logger.info(f"Workflow at 50% of recursion limit ({langgraph_step}/{recursion_limit})")
+
+    # Milestone logging near threshold
+    if langgraph_step == threshold - 1:
+        logger.warning(
+            f"Workflow at 60% of recursion limit ({langgraph_step}/{recursion_limit}) - "
+            f"approaching maximum"
+        )
+
     current_step_idx = state["current_step"]
     steps = state["steps"]
 
@@ -99,10 +165,10 @@ def execute_step(state: DeterministicWorkflowState) -> DeterministicWorkflowStat
                     ],
                 }
 
-            # Execute tool
+            # Execute tool (async)
             try:
-                result = tool.invoke(tool_params)
-            except (PanConnectionTimeout, PanURLError) as e:
+                result = await tool.ainvoke(tool_params)
+            except PanOSConnectionError as e:
                 # Network/connectivity errors - these are often transient
                 logger.error(f"PAN-OS connectivity error in step '{step_name}': {e}")
                 return {
@@ -118,7 +184,7 @@ def execute_step(state: DeterministicWorkflowState) -> DeterministicWorkflowStat
                         }
                     ],
                 }
-            except PanDeviceError as e:
+            except PanOSAPIError as e:
                 # PAN-OS API errors - configuration issues, object conflicts, etc.
                 logger.error(f"PAN-OS API error in step '{step_name}': {e}")
                 return {
@@ -139,7 +205,7 @@ def execute_step(state: DeterministicWorkflowState) -> DeterministicWorkflowStat
             # Determine status from result message
             if "✅" in result:
                 status = "success"
-            elif "⏭️" in result or "Skipped" in result:
+            elif "⏭️" in result or "Skipped" in result or "skipped" in result.lower():
                 status = "skipped"
             else:
                 status = "error"
@@ -163,20 +229,54 @@ def execute_step(state: DeterministicWorkflowState) -> DeterministicWorkflowStat
             message = step.get("message", "Approval required to continue")
             logger.info(f"Requesting approval: {message}")
 
-            # Use LangGraph interrupt for HITL
-            approval = interrupt(
-                {
-                    "type": "approval",
-                    "message": message,
-                    "step": step_name,
-                }
-            )
+            # Check if running in CLI mode
+            if is_cli_mode():
+                # CLI mode: Use typer.confirm for terminal prompt
+                import typer
 
-            output = {
-                "step": step_name,
-                "status": "approved" if approval else "rejected",
-                "result": f"User {'approved' if approval else 'rejected'} continuation",
-            }
+                try:
+                    approved = typer.confirm(f"\n{message}", default=False)
+                except (EOFError, KeyboardInterrupt):
+                    # Handle Ctrl+C or EOF gracefully
+                    approved = False
+                    logger.info("Approval interrupted by user")
+
+                if not approved:
+                    logger.info(f"❌ User rejected approval: {step_name}")
+                    return {
+                        **state,
+                        "step_outputs": state["step_outputs"]
+                        + [
+                            {
+                                "step": step_name,
+                                "status": "rejected",
+                                "result": "❌ User rejected approval",
+                            }
+                        ],
+                        "workflow_complete": True,  # Stop workflow
+                    }
+
+                logger.info(f"✅ User approved: {step_name}")
+                output = {
+                    "step": step_name,
+                    "status": "approved",
+                    "result": "✅ User approved continuation",
+                }
+            else:
+                # Studio/API mode: Use LangGraph interrupt for HITL
+                approval = interrupt(
+                    {
+                        "type": "approval",
+                        "message": message,
+                        "step": step_name,
+                    }
+                )
+
+                output = {
+                    "step": step_name,
+                    "status": "approved" if approval else "rejected",
+                    "result": f"User {'approved' if approval else 'rejected'} continuation",
+                }
 
             return {
                 **state,
@@ -199,6 +299,12 @@ def execute_step(state: DeterministicWorkflowState) -> DeterministicWorkflowStat
 
     except Exception as e:
         # Catch any other unexpected errors (non-PAN-OS)
+        # Re-raise GraphInterrupt for Studio/API mode (not an error)
+        from langgraph.errors import GraphInterrupt
+
+        if isinstance(e, GraphInterrupt):
+            raise
+
         logger.error(f"Unexpected error executing step '{step_name}': {e}", exc_info=True)
         return {
             **state,
@@ -215,7 +321,7 @@ def execute_step(state: DeterministicWorkflowState) -> DeterministicWorkflowStat
         }
 
 
-def evaluate_step(state: DeterministicWorkflowState) -> DeterministicWorkflowState:
+async def evaluate_step(state: DeterministicWorkflowState) -> DeterministicWorkflowState:
     """Use LLM to evaluate step result and decide next action.
 
     Args:
@@ -224,6 +330,11 @@ def evaluate_step(state: DeterministicWorkflowState) -> DeterministicWorkflowSta
     Returns:
         Updated state with evaluation decision
     """
+    # If overall_result already set (e.g., recursion limit), skip evaluation
+    if state.get("overall_result") and state["overall_result"].get("decision") == "partial":
+        logger.debug("Skipping evaluation - workflow stopped due to recursion limit")
+        return state
+
     settings = get_settings()
     llm = ChatAnthropic(
         model="claude-haiku-4-5",
@@ -279,7 +390,7 @@ Should we continue to the next step?"""
     ]
 
     try:
-        response = llm.invoke(messages)
+        response = await llm.ainvoke(messages)
         content = response.content
 
         # Parse JSON response
@@ -293,7 +404,7 @@ Should we continue to the next step?"""
 
         evaluation = json.loads(content)
 
-        logger.info(f"Step evaluation: {evaluation['decision']} - {evaluation['reason']}")
+        logger.debug(f"Step evaluation: {evaluation['decision']} - {evaluation['reason']}")
 
         return {
             **state,
@@ -327,6 +438,10 @@ def route_after_evaluation(
         return "format_result"
 
     decision = state["overall_result"].get("decision", "stop")
+
+    # Handle partial completion (recursion limit reached)
+    if decision == "partial":
+        return "format_result"
 
     if decision == "continue":
         # Check if there are more steps
@@ -369,18 +484,41 @@ def format_result(state: DeterministicWorkflowState) -> DeterministicWorkflowSta
         1 for output in state["step_outputs"] if output.get("status") == "success"
     )
     skipped_steps = sum(1 for output in state["step_outputs"] if output.get("status") == "skipped")
+    approved_steps = sum(
+        1 for output in state["step_outputs"] if output.get("status") == "approved"
+    )
+    rejected_steps = sum(
+        1 for output in state["step_outputs"] if output.get("status") == "rejected"
+    )
     failed_steps = sum(1 for output in state["step_outputs"] if output.get("status") == "error")
 
+    # Check if partial completion due to recursion limit
+    is_partial = state.get("overall_result", {}).get("decision") == "partial"
+
     # Build result message
-    message_parts = [
-        f"📊 Workflow '{state['workflow_name']}' Execution Summary",
-        "",
-        f"Steps: {completed_steps}/{total_steps}",
-        f"✅ Successful: {successful_steps}",
-    ]
+    if is_partial:
+        message_parts = [
+            f"⚠️ Workflow '{state['workflow_name']}' - Partial Completion",
+            "",
+            f"Steps: {completed_steps}/{total_steps} (stopped early due to recursion limit)",
+            f"✅ Successful: {successful_steps}",
+        ]
+    else:
+        message_parts = [
+            f"📊 Workflow '{state['workflow_name']}' Execution Summary",
+            "",
+            f"Steps: {completed_steps}/{total_steps}",
+            f"✅ Successful: {successful_steps}",
+        ]
+
+    if approved_steps > 0:
+        message_parts.append(f"✅ Approved: {approved_steps}")
 
     if skipped_steps > 0:
         message_parts.append(f"⏭️  Skipped: {skipped_steps}")
+
+    if rejected_steps > 0:
+        message_parts.append(f"❌ Rejected: {rejected_steps}")
 
     if failed_steps > 0:
         message_parts.append(f"❌ Failed: {failed_steps}")
@@ -391,8 +529,12 @@ def format_result(state: DeterministicWorkflowState) -> DeterministicWorkflowSta
         status = output.get("status")
         if status == "success":
             status_icon = "✅"
+        elif status == "approved":
+            status_icon = "✅"
         elif status == "skipped":
             status_icon = "⏭️ "
+        elif status == "rejected":
+            status_icon = "❌"
         else:
             status_icon = "❌"
 
@@ -410,9 +552,9 @@ def format_result(state: DeterministicWorkflowState) -> DeterministicWorkflowSta
         elif status == "skipped":
             reason = output.get("result", "")
             if "already exists" in reason:
-                message_parts.append(f"     Reason: Object already exists")
+                message_parts.append("     Reason: Object already exists")
             elif "not found" in reason:
-                message_parts.append(f"     Reason: Object not found")
+                message_parts.append("     Reason: Object not found")
 
     # Overall result
     if state.get("overall_result"):

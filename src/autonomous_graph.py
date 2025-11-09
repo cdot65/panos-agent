@@ -15,6 +15,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
+
 from src.core.checkpoint_manager import get_checkpointer
 from src.core.config import AgentContext, get_settings
 from src.core.memory_store import (
@@ -66,7 +67,7 @@ Use your judgment to complete tasks efficiently while following security best pr
 """
 
 
-def call_agent(
+async def call_agent(
     state: AutonomousState, *, runtime: Runtime[AgentContext], store: BaseStore
 ) -> AutonomousState:
     """Call LLM agent with tools and memory context.
@@ -88,23 +89,17 @@ def call_agent(
     memory_context = ""
     try:
         # Get firewall operation summary
-        summary = get_firewall_operation_summary(
-            hostname=settings.panos_hostname, store=store
-        )
+        summary = get_firewall_operation_summary(hostname=settings.panos_hostname, store=store)
 
         if summary and summary.get("total_objects", 0) > 0:
             # Build memory context string
             context_parts = []
-            context_parts.append(
-                f"**Firewall Memory Context ({settings.panos_hostname}):**"
-            )
+            context_parts.append(f"**Firewall Memory Context ({settings.panos_hostname}):**")
             context_parts.append(f"- Total objects: {summary['total_objects']}")
 
             # Add config type breakdown
             if summary.get("config_types"):
-                type_breakdown = ", ".join(
-                    f"{k}: {v}" for k, v in summary["config_types"].items()
-                )
+                type_breakdown = ", ".join(f"{k}: {v}" for k, v in summary["config_types"].items())
                 context_parts.append(f"- Object types: {type_breakdown}")
 
             # Add recent operations (last 5)
@@ -140,12 +135,10 @@ def call_agent(
     llm_with_tools = llm.bind_tools(ALL_TOOLS)
 
     # Prepend system message
-    messages = [SystemMessage(content=system_prompt)] + list[BaseMessage](
-        state["messages"]
-    )
+    messages = [SystemMessage(content=system_prompt)] + list[BaseMessage](state["messages"])
 
-    # Get response
-    response = llm_with_tools.invoke(messages)
+    # Get response (ainvoke for async)
+    response = await llm_with_tools.ainvoke(messages)
 
     return {"messages": [response]}
 
@@ -173,7 +166,7 @@ def route_after_agent(
     return END
 
 
-def store_operations(state: AutonomousState, *, store: BaseStore) -> AutonomousState:
+async def store_operations(state: AutonomousState, *, store: BaseStore) -> AutonomousState:
     """Store operation results in memory after tool execution.
 
     Extracts tool call results and stores them in the store for future context.
@@ -287,9 +280,7 @@ def store_operations(state: AutonomousState, *, store: BaseStore) -> AutonomousS
                     },
                     store=store,
                 )
-                logger.debug(
-                    f"Stored {len(operations)} operations for {config_type} on {hostname}"
-                )
+                logger.debug(f"Stored {len(operations)} operations for {config_type} on {hostname}")
 
     except Exception as e:
         logger.warning(f"Failed to store operations in memory: {e}")
@@ -297,11 +288,12 @@ def store_operations(state: AutonomousState, *, store: BaseStore) -> AutonomousS
     return state
 
 
-def create_autonomous_graph(store: BaseStore | None = None) -> StateGraph:
+def create_autonomous_graph(store: BaseStore | None = None, checkpointer=None) -> StateGraph:
     """Create autonomous ReAct agent graph.
 
     Args:
         store: Optional BaseStore instance. If None, uses InMemoryStore.
+        checkpointer: Optional checkpointer instance. If None, uses sync SqliteSaver.
 
     Returns:
         Compiled StateGraph with checkpointer and store for autonomous mode
@@ -310,6 +302,9 @@ def create_autonomous_graph(store: BaseStore | None = None) -> StateGraph:
 
     if store is None:
         store = InMemoryStore()
+
+    if checkpointer is None:
+        checkpointer = get_checkpointer()
 
     workflow = StateGraph(AutonomousState, context_schema=AgentContext)
 
@@ -338,6 +333,5 @@ def create_autonomous_graph(store: BaseStore | None = None) -> StateGraph:
     workflow.add_edge("tools", "store_operations")
     workflow.add_edge("store_operations", "agent")
 
-    # Compile with persistent SQLite checkpointer and store for memory
-    checkpointer = get_checkpointer()
+    # Compile with checkpointer and store for memory
     return workflow.compile(checkpointer=checkpointer, store=store)

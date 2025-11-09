@@ -1,7 +1,7 @@
 # PAN-OS LangGraph Agent
 
 AI agent for automating Palo Alto Networks PAN-OS firewalls using natural language.
-Built with LangGraph and pan-os-python.
+Built with LangGraph, using `httpx` for async HTTP and `lxml` for XML processing.
 
 ## Overview
 
@@ -19,12 +19,14 @@ This project demonstrates two approaches to AI-driven network automation:
 
 - 🤖 **Dual-mode operation**: Autonomous (ReAct) and Deterministic (workflow-based)
 - 🔧 **Comprehensive PAN-OS support**: 33 tools across addresses, services, policies, NAT
+- ⚡ **Fully async architecture**: Built on `httpx` and `lxml` for high-performance I/O
 - 🎯 **LangGraph Studio integration**: Visual debugging and execution
 - 📡 **Real-time streaming**: Live progress updates with emoji indicators (default)
 - 🔄 **Retry logic**: Exponential backoff for transient failures
 - 🏗️ **Composable subgraphs**: CRUD and commit workflows
 - 📝 **Firewall commits**: Job polling with approval gates
-- 💾 **Persistent checkpointing**: SQLite-based conversation history and failure recovery
+- 💾 **Persistent checkpointing**: AsyncSqliteSaver for conversation history and failure recovery
+- ✅ **XPath validation**: Structured XML generation with validation rules
 
 ## Quickstart
 
@@ -142,6 +144,7 @@ panos-agent run -p "List objects" --model claude-3-5-sonnet-20241022
 | **Claude Opus 3** | `opus` | ⚡⚡⚡ Moderate | 💵💵💵💵 Highest | Most powerful, deep analysis, recommendations |
 
 **Currently Available Models:**
+
 - `claude-haiku-4-5` (Haiku, latest - **default**)
 - `claude-3-5-sonnet-20241022` (Sonnet 3.5)
 - `claude-3-opus-20240229` (Opus 3)
@@ -149,6 +152,7 @@ panos-agent run -p "List objects" --model claude-3-5-sonnet-20241022
 ### When to Use Each Model
 
 **Use Haiku (default) for:**
+
 - Simple list operations (`List all address objects`)
 - Single CRUD operations (`Create address X`, `Delete service Y`)
 - Batch operations with known patterns
@@ -157,6 +161,7 @@ panos-agent run -p "List objects" --model claude-3-5-sonnet-20241022
 - Most automation tasks (recommended default)
 
 **Use Sonnet for:**
+
 - Multi-step operations
 - Policy creation with multiple objects
 - Natural language queries requiring reasoning
@@ -164,6 +169,7 @@ panos-agent run -p "List objects" --model claude-3-5-sonnet-20241022
 - When quality matters more than speed
 
 **Use Opus for:**
+
 - Deep security analysis
 - Policy recommendations and auditing
 - Multi-constraint decision making
@@ -186,6 +192,7 @@ panos-agent run -p "Brainstorm security architectures" --temperature 1.0
 ```
 
 **Recommendations:**
+
 - **0.0 (default)**: Use for all CRUD operations, deterministic workflows
 - **0.3-0.5**: Use for recommendations with some variety
 - **0.7-1.0**: Use for creative tasks (naming, brainstorming)
@@ -710,6 +717,79 @@ TIMEOUT_COMMIT = 180.0          # Change to desired seconds
 - Simple queries that should complete quickly
 - CI/CD pipelines with strict time limits
 
+## Workflow Limits
+
+### Recursion Limits
+
+To prevent infinite loops and ensure system stability, LangGraph enforces recursion limits on graph execution. The agent monitors these limits and stops workflows gracefully before hitting the hard limit.
+
+**Default Limits:**
+
+- **Autonomous mode**: 25 steps (default)
+  - ReAct pattern should complete quickly with focused tool calls
+  - Most queries complete in 5-10 iterations
+
+- **Deterministic mode**: 50 steps (default)
+  - Workflows may have many sequential steps
+  - Allows for complex multi-step automation workflows
+
+**Why these limits?**
+
+- Prevents runaway executions that could consume excessive resources
+- Ensures workflows complete or fail within reasonable timeframes
+- Provides predictable behavior for production deployments
+
+### Customizing Limits
+
+You can override the default recursion limit using the `--recursion-limit` CLI flag:
+
+```bash
+# Increase limit for long workflows
+panos-agent run -p "long_workflow" -m deterministic --recursion-limit 100
+
+# Decrease limit for faster failure detection
+panos-agent run -p "quick_test" -m autonomous --recursion-limit 10
+```
+
+**When to increase limits:**
+
+- Complex workflows with 20+ steps
+- Workflows with many conditional branches
+- Batch operations processing many items sequentially
+
+**When to decrease limits:**
+
+- Testing and development (faster failure detection)
+- Simple queries that should complete quickly
+- Resource-constrained environments
+
+### Graceful Degradation
+
+If a workflow approaches 80% of the recursion limit, the agent stops gracefully with partial results:
+
+1. **Warning logged** - System logs a warning when approaching the limit
+2. **Workflow stops gracefully** - No crash or error, workflow ends cleanly
+3. **Partial results returned** - All completed steps are included in the result
+4. **Clear message** - User-friendly explanation of why the workflow stopped
+
+**Example output:**
+
+```
+Workflow progress: 40/50 steps
+⚠️ Approaching recursion limit (40/50) - stopping workflow gracefully
+⚠️ Workflow partially completed: reached 40/50 steps. Workflow stopped gracefully to prevent recursion limit error.
+```
+
+**Progress Logging:**
+
+The agent logs progress at key milestones:
+
+- **Every 5 steps**: `Workflow progress: 5/50 steps`
+- **At 50%**: `Workflow at 50% of recursion limit (25/50)`
+- **At 80%**: `Workflow at 80% of recursion limit (40/50) - approaching maximum`
+
+This provides visibility into workflow execution progress and helps identify when workflows are approaching limits.
+
 ## Error Handling & Resilience
 
 ### Automatic Retry Policies
@@ -770,12 +850,12 @@ The agent classifies errors into three tiers:
 1. **Tier 1 - Connectivity Errors (Retryable)**
    - Network timeouts, DNS failures, connection resets
    - Automatically retried with exponential backoff
-   - Example: `PanConnectionTimeout`, `PanURLError`
+   - Example: `PanOSConnectionError`, `httpx.TimeoutException`, `httpx.NetworkError`
 
 2. **Tier 2 - API/Configuration Errors (Non-retryable)**
    - Validation errors, object conflicts, permission issues
    - Fail immediately with clear error messages
-   - Example: `PanDeviceError: "Object already exists"`
+   - Example: `PanOSAPIError: "Object already exists"`, `PanOSValidationError`
 
 3. **Tier 3 - Unexpected Errors (Non-retryable)**
    - Unknown exceptions with full traceback logging
@@ -1323,6 +1403,91 @@ graph TD
 - **Workflows**: See `panos-agent list-workflows`
 - **LangGraph Studio**: Run `langgraph dev` for visual interface
 
+## Deployment
+
+Deploy the agent to LangSmith Cloud for production use with REST API access, authentication, and persistent storage.
+
+### Prerequisites
+
+- LangSmith account with API access
+- GitHub repository (for source control)
+- `langgraph` CLI installed: `pip install langgraph-cli`
+- LangSmith API key set: `export LANGSMITH_API_KEY=lsv2_pt_...`
+
+### Quick Deploy
+
+```bash
+# Deploy from current directory
+langgraph deploy
+
+# This will:
+# 1. Build your agent into a container
+# 2. Upload to LangSmith Cloud
+# 3. Provide a deployment URL and API endpoint
+```
+
+**Example output:**
+
+```
+✅ Deployment successful!
+Deployment URL: https://smith.langchain.com/deployments/panos-agent-prod
+API Endpoint: https://panos-agent-prod.api.langsmith.com
+```
+
+### Environment Variables
+
+Set these in your LangSmith deployment configuration:
+
+```bash
+# Required
+ANTHROPIC_API_KEY=sk-ant-...       # Claude API key
+PANOS_HOSTNAME=firewall.example.com
+PANOS_USERNAME=automation
+PANOS_PASSWORD=secure-password
+
+# Optional
+LANGSMITH_TRACING=true             # Enable LangSmith tracing
+LANGSMITH_PROJECT=panos-agent-prod # Project name for traces
+```
+
+### Using the Deployed API
+
+Once deployed, interact with your agent via REST API or Python SDK:
+
+#### REST API (curl)
+
+```bash
+# Create a new thread
+curl -X POST https://panos-agent-prod.api.langsmith.com/threads \
+  -H "X-API-Key: $LANGSMITH_API_KEY" \
+  -H "Content-Type: application/json"
+
+# Run the agent
+curl -X POST https://panos-agent-prod.api.langsmith.com/threads/{thread_id}/runs \
+  -H "X-API-Key: $LANGSMITH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": {
+      "messages": [{"role": "user", "content": "List all address objects"}]
+    }
+  }'
+```
+
+#### Python SDK
+
+See `examples/api_usage.py` for complete examples using the LangGraph Python SDK.
+
+### Monitoring and Observability
+
+All deployed agents automatically trace to LangSmith:
+
+- **View traces**: https://smith.langchain.com/projects/{your-project}
+- **Monitor performance**: Response times, token usage, error rates
+- **Debug issues**: Full execution graphs with step-by-step breakdown
+- **Anonymized data**: Sensitive firewall data is automatically redacted
+
+For detailed deployment instructions, API examples, and troubleshooting, see **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
+
 ## Contributing
 
 This is a standalone example project within the broader `paloaltonetworks-automation-examples`
@@ -1335,7 +1500,8 @@ See repository root for license information.
 ## Resources
 
 - [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
-- [pan-os-python Documentation](https://pan-os-python.readthedocs.io/)
+- [httpx Documentation](https://www.python-httpx.org/) - Async HTTP client
+- [lxml Documentation](https://lxml.de/) - XML processing
 - [PAN-OS XML API Reference](https://docs.paloaltonetworks.com/pan-os/11-0/pan-os-panorama-api)
 
 ---
@@ -1347,7 +1513,8 @@ See repository root for license information.
 
 - ✅ LangSmith environment variables and anonymizers (Phase 1.1-1.2)
 - ✅ Metadata and tags for observability (Phase 1.3)
-- ✅ Fixed CRUD subgraph pan-os-python API usage
-- ✅ Fixed deterministic workflow step accumulation bug
+- ✅ Migrated from pan-os-python to httpx + lxml (fully async)
+- ✅ Added XPath validation and structure mapping
+- ✅ AsyncSqliteSaver for async checkpointing
 
-**Last Updated**: 2025-01-08
+**Last Updated**: 2025-01-09

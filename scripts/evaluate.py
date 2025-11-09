@@ -48,11 +48,7 @@ EXAMPLE_DATASET = [
     {
         "name": "Create address object",
         "input": {
-            "messages": [
-                HumanMessage(
-                    content="Create address object web-server at 192.168.1.100"
-                )
-            ]
+            "messages": [HumanMessage(content="Create address object web-server at 192.168.1.100")]
         },
         "expected_tool": "address_create",
         "category": "crud_create",
@@ -76,9 +72,7 @@ EXAMPLE_DATASET = [
         "name": "Invalid IP address",
         "input": {
             "messages": [
-                HumanMessage(
-                    content="Create address object bad-server at 999.999.999.999"
-                )
+                HumanMessage(content="Create address object bad-server at 999.999.999.999")
             ]
         },
         "expected_behavior": "error_handling",
@@ -94,9 +88,7 @@ EXAMPLE_DATASET = [
     },
     {
         "name": "Delete address object",
-        "input": {
-            "messages": [HumanMessage(content="Delete address object test-server")]
-        },
+        "input": {"messages": [HumanMessage(content="Delete address object test-server")]},
         "expected_tool": "address_delete",
         "category": "crud_delete",
         "mode": "autonomous",
@@ -117,9 +109,7 @@ EXAMPLE_DATASET = [
 ]
 
 
-def evaluate_autonomous_mode(
-    examples: List[Dict[str, Any]], graph: Any
-) -> Dict[str, Any]:
+def evaluate_autonomous_mode(examples: List[Dict[str, Any]], graph: Any) -> Dict[str, Any]:
     """Evaluate autonomous mode on examples.
 
     Args:
@@ -170,7 +160,7 @@ def evaluate_autonomous_mode(
 
             if tool_match:
                 successful += 1
-                logger.info(f"✅ Success - Tool(s) called correctly")
+                logger.info("✅ Success - Tool(s) called correctly")
             else:
                 failed += 1
                 logger.info(
@@ -215,9 +205,7 @@ def evaluate_autonomous_mode(
     }
 
 
-def evaluate_deterministic_mode(
-    examples: List[Dict[str, Any]], graph: Any
-) -> Dict[str, Any]:
+def evaluate_deterministic_mode(examples: List[Dict[str, Any]], graph: Any) -> Dict[str, Any]:
     """Evaluate deterministic mode on examples.
 
     Args:
@@ -267,11 +255,13 @@ def evaluate_deterministic_mode(
                 successful += 1
                 # Count successful vs error/skipped steps for reporting
                 success_count = sum(
-                    1 for out in step_results
+                    1
+                    for out in step_results
                     if isinstance(out, dict) and out.get("status") == "success"
                 )
                 error_count = sum(
-                    1 for out in step_results
+                    1
+                    for out in step_results
                     if isinstance(out, dict) and out.get("status") == "error"
                 )
                 logger.info(
@@ -285,9 +275,9 @@ def evaluate_deterministic_mode(
                         f"❌ Failed - Expected {expected_steps} steps, got {len(step_results)}"
                     )
                 elif error_occurred:
-                    logger.info(f"❌ Failed - Workflow error occurred")
+                    logger.info("❌ Failed - Workflow error occurred")
                 elif not workflow_complete:
-                    logger.info(f"❌ Failed - Workflow did not complete")
+                    logger.info("❌ Failed - Workflow did not complete")
 
             results.append(
                 {
@@ -407,36 +397,44 @@ def load_langsmith_dataset(dataset_name: str) -> List[Dict[str, Any]]:
     """
     settings = get_settings()
     if not settings.langsmith_api_key:
-        raise ValueError(
-            "LangSmith API key not configured. Set LANGSMITH_API_KEY in .env"
-        )
+        raise ValueError("LangSmith API key not configured. Set LANGSMITH_API_KEY in .env")
 
     client = Client(api_key=settings.langsmith_api_key)
     try:
         dataset = client.read_dataset(dataset_name=dataset_name)
         examples = []
-        
+
         # List examples - handle both iterator and list responses
         example_list = list(client.list_examples(dataset_id=dataset.id))
-        
+
         if len(example_list) == 0:
             logger.warning(f"Dataset '{dataset_name}' exists but contains 0 examples.")
             logger.info("This likely means the dataset was created but examples weren't added.")
             logger.info("\nOptions:")
-            logger.info(f"  1. Recreate with examples: python scripts/evaluate.py --create-dataset --dataset {dataset_name}")
+            logger.info(
+                f"  1. Recreate with examples: python scripts/evaluate.py --create-dataset --dataset {dataset_name}"
+            )
             logger.info("     (Note: Delete the empty dataset in LangSmith UI first)")
-            logger.info(f"  2. Use example dataset instead: python scripts/evaluate.py --dataset example --mode both")
+            logger.info(
+                "  2. Use example dataset instead: python scripts/evaluate.py --dataset example --mode both"
+            )
             raise ValueError(f"Dataset '{dataset_name}' is empty (0 examples)")
-        
+
         for example in example_list:
             # Convert LangSmith example to our format
             example_dict = {
                 "name": example.name or str(example.id),
                 "input": example.inputs,
                 "expected_tool": example.outputs.get("expected_tool") if example.outputs else None,
-                "expected_tools": example.outputs.get("expected_tools") if example.outputs else None,
-                "expected_steps": example.outputs.get("expected_steps") if example.outputs else None,
-                "expected_behavior": example.outputs.get("expected_behavior") if example.outputs else None,
+                "expected_tools": (
+                    example.outputs.get("expected_tools") if example.outputs else None
+                ),
+                "expected_steps": (
+                    example.outputs.get("expected_steps") if example.outputs else None
+                ),
+                "expected_behavior": (
+                    example.outputs.get("expected_behavior") if example.outputs else None
+                ),
                 "category": example.outputs.get("category") if example.outputs else "unknown",
                 "mode": example.outputs.get("mode") if example.outputs else "autonomous",
             }
@@ -466,9 +464,7 @@ def create_langsmith_dataset(
     """
     settings = get_settings()
     if not settings.langsmith_api_key:
-        raise ValueError(
-            "LangSmith API key not configured. Set LANGSMITH_API_KEY in .env"
-        )
+        raise ValueError("LangSmith API key not configured. Set LANGSMITH_API_KEY in .env")
 
     client = Client(api_key=settings.langsmith_api_key)
 
@@ -478,7 +474,9 @@ def create_langsmith_dataset(
         logger.warning(f"Dataset '{dataset_name}' already exists (ID: {existing_dataset.id})")
         logger.info("To use the existing dataset, run:")
         logger.info(f"  python scripts/evaluate.py --dataset {dataset_name} --mode both")
-        logger.info("\nTo recreate the dataset, delete it first in LangSmith UI or use a different name.")
+        logger.info(
+            "\nTo recreate the dataset, delete it first in LangSmith UI or use a different name."
+        )
         return
     except Exception:
         # Dataset doesn't exist, proceed with creation
@@ -495,7 +493,9 @@ def create_langsmith_dataset(
             logger.error(f"Dataset '{dataset_name}' already exists.")
             logger.info("To use the existing dataset, run:")
             logger.info(f"  python scripts/evaluate.py --dataset {dataset_name} --mode both")
-            logger.info("\nTo recreate the dataset, delete it first in LangSmith UI or use a different name.")
+            logger.info(
+                "\nTo recreate the dataset, delete it first in LangSmith UI or use a different name."
+            )
             return
         raise
 
@@ -503,18 +503,20 @@ def create_langsmith_dataset(
     inputs_list = []
     outputs_list = []
     metadata_list = []
-    
+
     for ex in examples:
         # Convert our format to LangSmith format
         inputs_list.append(ex["input"])
-        outputs_list.append({
-            "expected_tool": ex.get("expected_tool"),
-            "expected_tools": ex.get("expected_tools"),
-            "expected_steps": ex.get("expected_steps"),
-            "expected_behavior": ex.get("expected_behavior"),
-            "category": ex.get("category", "unknown"),
-            "mode": ex.get("mode", "autonomous"),
-        })
+        outputs_list.append(
+            {
+                "expected_tool": ex.get("expected_tool"),
+                "expected_tools": ex.get("expected_tools"),
+                "expected_steps": ex.get("expected_steps"),
+                "expected_behavior": ex.get("expected_behavior"),
+                "category": ex.get("category", "unknown"),
+                "mode": ex.get("mode", "autonomous"),
+            }
+        )
         metadata_list.append({"name": ex.get("name", "")})
 
     # Create examples in batch
@@ -527,7 +529,7 @@ def create_langsmith_dataset(
 
     logger.info(f"Created LangSmith dataset '{dataset_name}' with {len(examples)} examples")
     logger.info(f"Dataset ID: {dataset.id}")
-    
+
     # Show template guide
     logger.info("\n" + "=" * 60)
     logger.info("Dataset Template Guide")
@@ -539,13 +541,17 @@ def create_langsmith_dataset(
     logger.info("from langchain_core.messages import HumanMessage")
     logger.info("")
     logger.info("MY_DATASET = [")
-    logger.info('    {"name": "Example", "input": {"messages": [HumanMessage(content="Your query")]},')
+    logger.info(
+        '    {"name": "Example", "input": {"messages": [HumanMessage(content="Your query")]},'
+    )
     logger.info('     "expected_tool": "tool_name", "category": "category", "mode": "autonomous"},')
     logger.info("]")
     logger.info("")
     logger.info("Usage:")
-    logger.info(f"  python scripts/create_custom_dataset.py --name my-dataset --examples my_dataset.py")
-    logger.info(f"  Or: make dataset-create DATASET=my-dataset")
+    logger.info(
+        "  python scripts/create_custom_dataset.py --name my-dataset --examples my_dataset.py"
+    )
+    logger.info("  Or: make dataset-create DATASET=my-dataset")
     logger.info("")
     logger.info("See scripts/dataset_template.py for full examples")
 
@@ -633,9 +639,7 @@ def main():
         action="store_true",
         help="Create LangSmith dataset from example data",
     )
-    parser.add_argument(
-        "--save-results", action="store_true", help="Save results to file"
-    )
+    parser.add_argument("--save-results", action="store_true", help="Save results to file")
 
     args = parser.parse_args()
 
@@ -667,12 +671,14 @@ def main():
             if len(examples) == 0:
                 logger.warning("Dataset is empty. Falling back to example dataset.")
                 logger.info("To populate the dataset, delete it and recreate:")
-                logger.info(f"  python scripts/evaluate.py --create-dataset --dataset {args.dataset}")
+                logger.info(
+                    f"  python scripts/evaluate.py --create-dataset --dataset {args.dataset}"
+                )
                 examples = EXAMPLE_DATASET
         except ValueError as e:
             logger.error(f"Failed to load dataset: {e}")
             logger.info("\nFalling back to example dataset for this run.")
-            logger.info(f"\nTo fix the LangSmith dataset, use:")
+            logger.info("\nTo fix the LangSmith dataset, use:")
             logger.info(f"  python scripts/evaluate.py --create-dataset --dataset {args.dataset}")
             logger.info("(Delete the empty dataset in LangSmith UI first)")
             examples = EXAMPLE_DATASET

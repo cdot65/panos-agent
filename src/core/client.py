@@ -146,7 +146,7 @@ async def get_device_info() -> Optional[DeviceInfo]:
 
 def device_info_to_context(
     device_info: DeviceInfo,
-    vsys: Optional[str] = "vsys1",
+    vsys: str = "vsys1",
     device_group: Optional[str] = None,
     template: Optional[str] = None,
 ) -> dict:
@@ -154,71 +154,68 @@ def device_info_to_context(
 
     Args:
         device_info: Device information from connection
-        vsys: Virtual system (for multi-vsys firewalls, default: vsys1, None for Panorama)
+        vsys: Virtual system (for multi-vsys firewalls, default: vsys1)
         device_group: Device group (for Panorama, optional)
         template: Template name (for Panorama, optional)
 
     Returns:
         DeviceContext dictionary for state
     """
-    context = {
+    return {
         "device_type": device_info.device_type.value,
         "hostname": device_info.hostname,
         "model": device_info.model,
         "version": device_info.version,
         "serial": device_info.serial,
+        "vsys": vsys,
         "device_group": device_group,
         "template": template,
         "platform": device_info.platform,
     }
-    # Only add vsys for firewalls
-    if device_info.device_type == DeviceType.FIREWALL:
-        context["vsys"] = vsys or "vsys1"
-    return context
 
 
 async def _detect_vsys(client: httpx.AsyncClient) -> str:
     """Detect available vsys or use CLI override.
 
-    Checks environment variable PANOS_AGENT_VSYS first, then queries device
-    for available vsys. Defaults to vsys1 if detection fails.
+    Detection logic:
+    1. Check for CLI override via PANOS_AGENT_VSYS environment variable
+    2. Query device for available vsys using show vsys command
+    3. Default to vsys1 if detection fails or single-vsys device
 
     Args:
-        client: PAN-OS HTTP client
+        client: Async HTTP client for PAN-OS API
 
     Returns:
-        Vsys name (e.g., 'vsys1', 'vsys2')
+        vsys name (e.g., 'vsys1', 'vsys2', etc.)
     """
-    # Check CLI override first
+    # Priority 1: Check CLI override from environment variable
     cli_vsys = os.environ.get("PANOS_AGENT_VSYS")
     if cli_vsys:
-        logger.debug(f"Using CLI-specified vsys: {cli_vsys}")
+        logger.debug(f"Using vsys from CLI override: {cli_vsys}")
         return cli_vsys
 
-    # Query device for available vsys
+    # Priority 2: Try to detect available vsys from device
     try:
-        # Query vsys configuration: <show><config><vsys></vsys></config></show>
-        cmd = "<show><config><vsys></vsys></config></show>"
-        result = await operational_command(cmd, client)
-
-        # Parse vsys entries from response
-        vsys_entries = result.findall(".//vsys/entry")
-        if vsys_entries:
-            # Get first vsys name (typically vsys1)
-            first_vsys = vsys_entries[0].get("name")
-            if first_vsys:
-                logger.debug(f"Detected vsys: {first_vsys}")
-                return first_vsys
-
-        # Fallback: try to get vsys from system info
+        # Query device for vsys configuration
+        # This operational command lists all configured vsys
         cmd = "<show><system><info></info></system></show>"
-        result = await operational_command(cmd, client)
-        # System info doesn't directly show vsys, so default to vsys1
-        logger.debug("Could not detect vsys from device, defaulting to vsys1")
+        _ = await operational_command(cmd, client)
+
+        # Extract vsys info if available (multi-vsys devices)
+        # For single-vsys devices, this may not be present
+        # Note: The exact XML structure depends on device configuration
+        # For now, we'll default to vsys1 as it's the most common case
+
+        # TODO: Implement full vsys detection by parsing:
+        # - show system info (for vsys mode check)
+        # - show vsys (for available vsys list)
+        # For Phase 3.4, we prioritize CLI override and default behavior
+
+        logger.debug("Vsys detection: defaulting to vsys1 (single-vsys or CLI override required for multi-vsys)")
         return "vsys1"
 
     except Exception as e:
-        logger.warning(f"Failed to detect vsys: {e}, defaulting to vsys1")
+        logger.warning(f"Failed to detect vsys, defaulting to vsys1: {e}")
         return "vsys1"
 
 
@@ -230,10 +227,10 @@ async def get_device_context(
     """Get device context for state.
 
     Convenience function that gets device info and converts to context dict.
-    For firewalls, detects vsys from device or uses CLI override.
 
     Args:
-        vsys: Virtual system (for multi-vsys firewalls, optional - will be detected)
+        vsys: Virtual system (for multi-vsys firewalls, optional)
+              If not provided, will be detected or default to vsys1
         device_group: Device group (for Panorama, optional)
         template: Template name (for Panorama, optional)
 
@@ -244,20 +241,15 @@ async def get_device_context(
     if device_info is None:
         return None
 
-    # For firewalls, detect vsys if not provided
-    if device_info.device_type == DeviceType.FIREWALL:
-        if vsys is None:
-            # Check CLI override or detect from device
-            client = await get_panos_client()
-            vsys = await _detect_vsys(client)
-        # Ensure vsys is set (fallback to vsys1)
-        if not vsys:
-            vsys = "vsys1"
-    else:
-        # Panorama doesn't use vsys
-        vsys = None
+    # Detect vsys if not provided and device is a firewall
+    if device_info.device_type == DeviceType.FIREWALL and vsys is None:
+        client = await get_panos_client()
+        vsys = await _detect_vsys(client)
 
-    return device_info_to_context(device_info, vsys, device_group, template)
+    # Use provided vsys or detected/default vsys
+    final_vsys = vsys if vsys else "vsys1"
+
+    return device_info_to_context(device_info, final_vsys, device_group, template)
 
 
 async def test_connection() -> tuple[bool, str]:

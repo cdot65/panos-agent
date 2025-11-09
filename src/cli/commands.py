@@ -331,10 +331,10 @@ def run(
         "--recursion-limit",
         help="Maximum workflow steps (default: 25 autonomous, 50 deterministic)",
     ),
-    vsys: str = typer.Option(
-        "vsys1",
+    vsys: Optional[str] = typer.Option(
+        None,
         "--vsys",
-        help="Virtual system for firewall operations (vsys1, vsys2, etc.)",
+        help="Virtual system for firewall operations (vsys1, vsys2, etc.). Default: vsys1",
     ),
 ):
     """Run PAN-OS agent with specified mode and prompt.
@@ -363,11 +363,17 @@ def run(
 
         # Custom recursion limit for long workflows
         panos-agent run -p "long_workflow" -m deterministic --recursion-limit 100
+
+        # Multi-vsys firewall support
+        panos-agent run -p "List address objects" --vsys vsys2
+        panos-agent run -p "Create address in vsys3" --vsys vsys3
     """
     setup_logging(log_level)
 
-    # Store vsys in environment for client to use
-    os.environ["PANOS_AGENT_VSYS"] = vsys
+    # Set vsys environment variable if provided (for multi-vsys firewall support)
+    if vsys:
+        os.environ["PANOS_AGENT_VSYS"] = vsys
+        console.print(f"[dim]Using vsys: {vsys}[/dim]")
 
     # Resolve model name from alias
     model_name = resolve_model_name(model)

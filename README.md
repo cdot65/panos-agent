@@ -1481,7 +1481,7 @@ See `examples/api_usage.py` for complete examples using the LangGraph Python SDK
 
 All deployed agents automatically trace to LangSmith:
 
-- **View traces**: https://smith.langchain.com/projects/{your-project}
+- **View traces**: <https://smith.langchain.com/projects/{your-project}>
 - **Monitor performance**: Response times, token usage, error rates
 - **Debug issues**: Full execution graphs with step-by-step breakdown
 - **Anonymized data**: Sensitive firewall data is automatically redacted

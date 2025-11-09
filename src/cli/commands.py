@@ -51,18 +51,26 @@ def run(
         None, "--thread-id", "-t", help="Thread ID for conversation continuity"
     ),
     log_level: str = typer.Option("INFO", "--log-level", "-l", help="Logging level"),
+    no_stream: bool = typer.Option(
+        False, "--no-stream", help="Disable streaming output (use for CI/CD)"
+    ),
 ):
     """Run PAN-OS agent with specified mode and prompt.
 
+    By default, shows real-time streaming progress. Use --no-stream for CI/CD.
+
     Examples:
-        # Autonomous mode (natural language)
+        # Autonomous mode (natural language) - with streaming
         panos-agent run -p "List all address objects" -m autonomous
         panos-agent run -p "Create address object web-server at 10.1.1.100"
 
-        # Deterministic mode (predefined workflows)
+        # Deterministic mode (predefined workflows) - with step progress
         panos-agent run -p "simple_address" -m deterministic
         panos-agent run -p "web_server_setup" -m deterministic
         panos-agent list-workflows  # See all available workflows
+
+        # Disable streaming for automation
+        panos-agent run -p "List objects" --no-stream
     """
     setup_logging(log_level)
 
@@ -85,27 +93,51 @@ def run(
 
             tid = thread_id or str(uuid.uuid4())
 
-            # Invoke graph with timeout
-            result = graph.invoke(
-                {"messages": [HumanMessage(content=prompt)]},
-                config={
-                    "configurable": {"thread_id": tid},
-                    "timeout": TIMEOUT_AUTONOMOUS,
-                    "tags": ["panos-agent", "autonomous", "v0.1.0"],
-                    "metadata": {
-                        "mode": "autonomous",
-                        "thread_id": tid,
-                        "user_prompt_length": len(prompt),
-                        "timestamp": datetime.now().isoformat(),
-                        "firewall_host": settings.panos_hostname,
-                    },
+            config = {
+                "configurable": {"thread_id": tid},
+                "timeout": TIMEOUT_AUTONOMOUS,
+                "tags": ["panos-agent", "autonomous", "v0.1.0"],
+                "metadata": {
+                    "mode": "autonomous",
+                    "thread_id": tid,
+                    "user_prompt_length": len(prompt),
+                    "timestamp": datetime.now().isoformat(),
+                    "firewall_host": settings.panos_hostname,
                 },
-            )
+            }
 
-            # Print response
-            last_message = result["messages"][-1]
-            console.print("\n[bold green]Response:[/bold green]")
-            console.print(last_message.content)
+            if no_stream:
+                # Legacy invoke mode for CI/CD
+                result = graph.invoke(
+                    {"messages": [HumanMessage(content=prompt)]},
+                    config=config,
+                )
+                last_message = result["messages"][-1]
+                console.print("\n[bold green]Response:[/bold green]")
+                console.print(last_message.content)
+            else:
+                # Streaming mode with real-time progress
+                result = None
+                for chunk in graph.stream(
+                    {"messages": [HumanMessage(content=prompt)]},
+                    config=config,
+                    stream_mode="updates",
+                ):
+                    # chunk is dict: {node_name: node_output}
+                    for node_name, node_output in chunk.items():
+                        if node_name == "agent":
+                            console.print("[yellow]🤖 Agent thinking...[/yellow]")
+                        elif node_name == "tools":
+                            console.print("[cyan]🔧 Executing tools...[/cyan]")
+                        # Keep last result
+                        result = node_output
+
+                # Print final response
+                if result and "messages" in result:
+                    last_message = result["messages"][-1]
+                    console.print("\n[bold green]✅ Complete[/bold green]")
+                    console.print("\n[bold green]Response:[/bold green]")
+                    console.print(last_message.content)
 
             console.print(f"\n[dim]Thread ID: {tid}[/dim]")
 
@@ -127,28 +159,72 @@ def run(
             else:
                 formatted_prompt = prompt
 
-            # Invoke graph with tags, metadata, and timeout
-            result = graph.invoke(
-                {"messages": [HumanMessage(content=formatted_prompt)]},
-                config={
-                    "configurable": {"thread_id": tid},
-                    "timeout": TIMEOUT_DETERMINISTIC,
-                    "tags": ["panos-agent", "deterministic", prompt, "v0.1.0"],
-                    "metadata": {
-                        "mode": "deterministic",
-                        "workflow": prompt,  # Original workflow name
-                        "thread_id": tid,
-                        "timestamp": datetime.now().isoformat(),
-                    },
+            config = {
+                "configurable": {"thread_id": tid},
+                "timeout": TIMEOUT_DETERMINISTIC,
+                "tags": ["panos-agent", "deterministic", prompt, "v0.1.0"],
+                "metadata": {
+                    "mode": "deterministic",
+                    "workflow": prompt,  # Original workflow name
+                    "thread_id": tid,
+                    "timestamp": datetime.now().isoformat(),
                 },
-            )
+            }
 
-            # Print response
-            last_message = result["messages"][-1]
-            console.print("\n[bold green]Response:[/bold green]")
-            console.print(
-                last_message.content if isinstance(last_message, dict) else last_message.content
-            )
+            if no_stream:
+                # Legacy invoke mode for CI/CD
+                result = graph.invoke(
+                    {"messages": [HumanMessage(content=formatted_prompt)]},
+                    config=config,
+                )
+                last_message = result["messages"][-1]
+                console.print("\n[bold green]Response:[/bold green]")
+                console.print(
+                    last_message.content if isinstance(last_message, dict) else last_message.content
+                )
+            else:
+                # Streaming mode with step-by-step progress
+                result = None
+                step_count = 0
+                for chunk in graph.stream(
+                    {"messages": [HumanMessage(content=formatted_prompt)]},
+                    config=config,
+                    stream_mode="updates",
+                ):
+                    # chunk is dict: {node_name: node_output}
+                    for node_name, node_output in chunk.items():
+                        if node_name == "load_workflow":
+                            console.print("[yellow]📋 Loading workflow...[/yellow]")
+                        elif node_name == "execute_step":
+                            # Track step progress
+                            if "current_step" in node_output:
+                                step_count = node_output["current_step"]
+                                total_steps = len(node_output.get("workflow_steps", []))
+                                current_step_desc = (
+                                    node_output.get("workflow_steps", [])[step_count - 1]
+                                    .get("description", "Executing step")
+                                    if step_count <= total_steps
+                                    else "Executing step"
+                                )
+                                console.print(
+                                    f"[cyan]🔧 Step {step_count}/{total_steps}: "
+                                    f"{current_step_desc}...[/cyan]"
+                                )
+                        elif node_name == "finalize_workflow":
+                            console.print("[yellow]📝 Finalizing workflow...[/yellow]")
+                        # Keep last result
+                        result = node_output
+
+                # Print final response
+                if result and "messages" in result:
+                    last_message = result["messages"][-1]
+                    console.print("\n[bold green]✅ Workflow Complete[/bold green]")
+                    console.print("\n[bold green]Response:[/bold green]")
+                    console.print(
+                        last_message.content
+                        if isinstance(last_message, dict)
+                        else last_message.content
+                    )
 
             console.print(f"\n[dim]Thread ID: {tid}[/dim]")
 

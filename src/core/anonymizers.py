@@ -11,7 +11,11 @@ Patterns covered:
 - XML password elements
 """
 
+from langsmith import Client
 from langsmith.anonymizer import create_anonymizer
+from langchain_core.tracers.langchain import LangChainTracer
+
+from src.core.config import get_settings
 
 
 def get_panos_anonymizer():
@@ -36,3 +40,36 @@ def get_panos_anonymizer():
             {"pattern": r"<password>.*?</password>", "replace": "<password><redacted></password>"},
         ]
     )
+
+
+def create_panos_tracer() -> LangChainTracer:
+    """
+    Create LangChainTracer configured with PAN-OS anonymization patterns.
+
+    This function creates a LangChainTracer that will automatically mask
+    sensitive data (API keys, passwords) before sending traces to LangSmith.
+
+    Returns:
+        LangChainTracer: Configured tracer with anonymization enabled
+
+    Example:
+        >>> from src.core.anonymizers import create_panos_tracer
+        >>> tracer = create_panos_tracer()
+        >>> # Use tracer with LangGraph checkpointer or LLM calls
+    """
+    settings = get_settings()
+
+    # Create anonymizer with PAN-OS patterns
+    anonymizer = get_panos_anonymizer()
+
+    # Create LangSmith client with anonymizer
+    client = Client(
+        api_key=settings.langsmith_api_key,
+        api_url=settings.langsmith_endpoint,
+        anonymizer=anonymizer,
+    )
+
+    # Create and return LangChainTracer with client
+    tracer = LangChainTracer(client=client)
+
+    return tracer

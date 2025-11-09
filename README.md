@@ -20,6 +20,7 @@ This project demonstrates two approaches to AI-driven network automation:
 - 🤖 **Dual-mode operation**: Autonomous (ReAct) and Deterministic (workflow-based)
 - 🔧 **Comprehensive PAN-OS support**: 33 tools across addresses, services, policies, NAT
 - 🎯 **LangGraph Studio integration**: Visual debugging and execution
+- 📡 **Real-time streaming**: Live progress updates with emoji indicators (default)
 - 🔄 **Retry logic**: Exponential backoff for transient failures
 - 🏗️ **Composable subgraphs**: CRUD and commit workflows
 - 📝 **Firewall commits**: Job polling with approval gates
@@ -99,12 +100,59 @@ panos-agent run -m deterministic -p "simple_address"
 panos-agent run -m deterministic -p "web_server_setup"
 panos-agent run -m deterministic -p "security_rule_complete"
 
+# Disable streaming for CI/CD (get final output only)
+panos-agent run -p "List address objects" --no-stream
+
 # Test connection
 panos-agent test-connection
 
 # Version info
 panos-agent version
 
+```
+
+### Streaming Mode (Default)
+
+By default, the agent provides **real-time progress feedback** as it executes:
+
+**Autonomous Mode:**
+
+- 🤖 **Agent thinking...** - LLM is processing your request
+- 🔧 **Executing tools...** - Running PAN-OS API operations
+- ✅ **Complete** - Final response ready
+
+**Deterministic Mode:**
+
+- 📋 **Loading workflow...** - Parsing workflow definition
+- 🔧 **Step 1/5: Creating address object...** - Step-by-step progress with descriptions
+- 🔧 **Step 2/5: Updating security policy...**
+- 📝 **Finalizing workflow...**
+- ✅ **Workflow Complete**
+
+**Example Output (Streaming):**
+
+```bash
+$ panos-agent run -p "Create address object test-123 at 10.1.1.123" -m autonomous
+
+PAN-OS Agent - Mode: autonomous
+Prompt: Create address object test-123 at 10.1.1.123
+
+🤖 Agent thinking...
+🔧 Executing tools...
+
+✅ Complete
+
+Response:
+Successfully created address object 'test-123' with IP address 10.1.1.123
+```
+
+**Disable Streaming for Automation:**
+
+Use `--no-stream` flag for scripts, CI/CD pipelines, or when you only need the final result:
+
+```bash
+# No progress indicators, just final output
+panos-agent run -p "List address objects" --no-stream > output.txt
 ```
 
 ## Testing the Graphs
@@ -297,6 +345,7 @@ panos-agent checkpoints prune --days 30 --force
 ```
 
 **Benefits:**
+
 - **Persistence**: Conversations survive application restarts
 - **Resume**: Continue from failures using same thread_id
 - **Time-travel**: Inspect historical checkpoint states
@@ -355,12 +404,14 @@ LANGSMITH_PROJECT=panos-agent-prod
 Every execution includes rich metadata for filtering:
 
 **Tags:**
+
 - `panos-agent` - All executions from this agent
 - `autonomous` or `deterministic` - Execution mode
 - Workflow name (deterministic mode only)
 - `v0.1.0` - Version tag
 
 **Metadata:**
+
 - `mode` - autonomous or deterministic
 - `thread_id` - Conversation thread ID
 - `firewall_host` - Target PAN-OS firewall
@@ -369,6 +420,7 @@ Every execution includes rich metadata for filtering:
 - `workflow` - Workflow name (deterministic mode)
 
 **Example filtering in LangSmith:**
+
 - Filter by tag: `panos-agent` AND `autonomous`
 - Filter by metadata: `firewall_host = "192.168.1.1"`
 - Time range + workflow: Last 7 days where `workflow = "web_server_setup"`
@@ -397,21 +449,25 @@ export LANGSMITH_API_KEY="lsv2_pt_your_key_here"
 ```
 
 The test will:
+
 1. Send test data containing fake API keys and passwords
 2. Print unique test run IDs for each test
 3. Provide instructions for manual verification in LangSmith UI
 
 **Manual verification steps:**
+
 1. Go to [smith.langchain.com](https://smith.langchain.com)
 2. Search for the test run IDs printed by the script
 3. Verify that sensitive values are replaced with placeholders like `<panos-api-key>` and `<password>`
 
 **What success looks like:**
+
 - ✅ API keys appear as `<panos-api-key>`
 - ✅ Passwords appear as `password: <password>`
 - ✅ No actual sensitive values visible in traces
 
 **What failure looks like:**
+
 - ❌ Actual API keys or passwords visible in traces
 - Review `src/core/anonymizers.py` patterns if anonymization fails
 
@@ -466,11 +522,13 @@ TIMEOUT_COMMIT = 180.0          # Change to desired seconds
 ```
 
 **When to increase timeouts:**
+
 - Large-scale batch operations (100+ objects)
 - Complex workflows with many steps (10+ steps)
 - Slow firewall commits (older hardware, large configs)
 
 **When to decrease timeouts:**
+
 - Fast development/testing cycles
 - Simple queries that should complete quickly
 - CI/CD pipelines with strict time limits
@@ -490,12 +548,14 @@ All PAN-OS API operations include automatic retry handling with exponential back
   - 3rd retry: 8 seconds delay
 
 **Retryable errors (automatically retried):**
+
 - `PanConnectionTimeout` - Firewall connection timeouts
 - `PanURLError` - Network/URL errors (DNS, routing issues)
 - `ConnectionError` - Generic network connection failures
 - `TimeoutError` - Operation timeouts
 
 **Non-retryable errors (fail immediately):**
+
 - `PanDeviceError` - Configuration/validation errors
 - `PanObjectError` - Object-specific errors (already exists, not found)
 - All other exceptions - Unknown errors fail fast
@@ -547,18 +607,21 @@ The agent classifies errors into three tiers:
 ### Best Practices
 
 **When retries help:**
+
 - Temporary network issues
 - Firewall under heavy load
 - Transient API unavailability
 - Brief connection interruptions
 
 **When retries don't help (and the agent won't retry):**
+
 - Invalid configuration (wrong IP format, invalid port)
 - Duplicate object names
 - Missing dependencies (referenced objects don't exist)
 - Permission/authentication errors
 
 **Manual intervention needed for:**
+
 - Persistent network issues (check firewall connectivity)
 - Configuration errors (fix input parameters)
 - Permission issues (verify API credentials)
@@ -568,6 +631,7 @@ The agent classifies errors into three tiers:
 The agent uses checkpointing to save conversation state after every step, allowing you to resume from failures without losing progress.
 
 **Checkpoint features:**
+
 - **Automatic state persistence** - Every graph step is saved
 - **Thread-based isolation** - Each conversation has its own checkpoint history
 - **Resume capability** - Continue from the last successful step after errors
@@ -588,6 +652,7 @@ panos-agent run -p "Continue creating the remaining objects" -m autonomous --thr
 ```
 
 **Key points:**
+
 - Use the **same thread ID** to resume the conversation
 - The agent has access to **full conversation history**
 - Previous tool results are **remembered** (no duplicate work)
@@ -658,6 +723,7 @@ For detailed troubleshooting scenarios and recovery strategies, see **[docs/TROU
 The agent includes a comprehensive evaluation framework to measure performance, accuracy, and reliability across different operation types.
 
 **Evaluation Metrics:**
+
 - **Success Rate** - % of examples completed successfully (target: ≥90%)
 - **Tool Accuracy** - % using correct tools (target: ≥95%)
 - **Response Completeness** - % with complete answers
@@ -690,12 +756,14 @@ The agent uses a curated evaluation dataset with 8+ examples covering:
 - **Workflows** (1 example) - Deterministic execution
 
 **Using Example Dataset (Local):**
+
 ```bash
 # Use built-in example dataset
 python scripts/evaluate.py --mode both
 ```
 
 **Creating LangSmith Dataset:**
+
 ```bash
 # Create dataset in LangSmith (requires LANGSMITH_API_KEY)
 python scripts/evaluate.py --create-dataset --dataset panos-agent-eval-v1
@@ -705,6 +773,7 @@ python scripts/evaluate.py --dataset panos-agent-eval-v1 --mode both
 ```
 
 **Loading from LangSmith:**
+
 ```bash
 # Load existing dataset from LangSmith
 python scripts/evaluate.py --dataset panos-agent-eval-v1 --mode autonomous
@@ -713,9 +782,11 @@ python scripts/evaluate.py --dataset panos-agent-eval-v1 --mode autonomous
 See **[docs/EVALUATION_DATASET.md](docs/EVALUATION_DATASET.md)** for complete dataset definition and LangSmith setup instructions.
 
 **For detailed usage examples, testing integration, and dataset creation guides, see:**
+
 - **[docs/EVALUATION_GUIDE.md](docs/EVALUATION_GUIDE.md)** - Complete evaluation guide with examples
 
 **Quick Start with Makefile:**
+
 ```bash
 # Setup (creates venv and installs dependencies)
 make install
@@ -738,6 +809,7 @@ See `make help` for all available targets.
 #### Continuous Evaluation
 
 **Weekly Regression Testing:**
+
 ```bash
 # Run weekly to detect regressions
 python scripts/evaluate.py --mode both --save-results
@@ -746,6 +818,7 @@ python scripts/evaluate.py --mode both --save-results
 ```
 
 **Pre-Deployment Validation:**
+
 ```bash
 # Before deploying new version
 python scripts/evaluate.py --mode both
@@ -757,6 +830,7 @@ python scripts/evaluate.py --mode both
 ### Test Coverage
 
 **Unit Tests:** 63/67 passing (94%)
+
 - Autonomous graph nodes
 - Deterministic graph nodes
 - CRUD subgraph nodes
@@ -764,6 +838,7 @@ python scripts/evaluate.py --mode both
 - Anonymizers
 
 **Integration Tests:** 6/20 passing (30%)
+
 - Autonomous graph end-to-end
 - Deterministic graph workflows
 - Subgraph execution

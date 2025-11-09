@@ -680,17 +680,60 @@ cat evaluation_results/eval_autonomous_*.json
 
 #### Evaluation Dataset
 
-The agent uses a curated evaluation dataset with 19+ examples covering:
+The agent uses a curated evaluation dataset with 8+ examples covering:
 
 - **Simple List Operations** (4 examples) - Read-only queries
-- **CRUD Create** (3 examples) - Object creation
-- **CRUD Read** (2 examples) - Object retrieval
-- **CRUD Delete** (2 examples) - Object deletion
-- **Multi-step Operations** (2 examples) - Complex queries
-- **Error Handling** (3 examples) - Invalid inputs
-- **Workflows** (3 examples) - Deterministic execution
+- **CRUD Create** (1 example) - Object creation
+- **CRUD Delete** (1 example) - Object deletion
+- **Multi-step Operations** (1 example) - Complex queries
+- **Error Handling** (1 example) - Invalid inputs
+- **Workflows** (1 example) - Deterministic execution
+
+**Using Example Dataset (Local):**
+```bash
+# Use built-in example dataset
+python scripts/evaluate.py --mode both
+```
+
+**Creating LangSmith Dataset:**
+```bash
+# Create dataset in LangSmith (requires LANGSMITH_API_KEY)
+python scripts/evaluate.py --create-dataset --dataset panos-agent-eval-v1
+
+# Use LangSmith dataset for evaluation
+python scripts/evaluate.py --dataset panos-agent-eval-v1 --mode both
+```
+
+**Loading from LangSmith:**
+```bash
+# Load existing dataset from LangSmith
+python scripts/evaluate.py --dataset panos-agent-eval-v1 --mode autonomous
+```
 
 See **[docs/EVALUATION_DATASET.md](docs/EVALUATION_DATASET.md)** for complete dataset definition and LangSmith setup instructions.
+
+**For detailed usage examples, testing integration, and dataset creation guides, see:**
+- **[docs/EVALUATION_GUIDE.md](docs/EVALUATION_GUIDE.md)** - Complete evaluation guide with examples
+
+**Quick Start with Makefile:**
+```bash
+# Setup (creates venv and installs dependencies)
+make install
+
+# Run evaluation locally
+make evaluate
+
+# Run evaluation in CI (fails if <90% success)
+make evaluate-ci
+
+# Manage datasets
+make dataset-create DATASET=panos-agent-eval-v1  # Shows template guide after creation
+make dataset-list
+```
+
+**Note:** When creating a dataset, a commented template is displayed to help you create custom datasets.
+
+See `make help` for all available targets.
 
 #### Continuous Evaluation
 

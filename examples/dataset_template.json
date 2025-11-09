@@ -1,0 +1,80 @@
+{
+  "examples": [
+    {
+      "name": "Example 1: List address objects",
+      "input": {
+        "messages": [
+          {
+            "content": "List all address objects",
+            "type": "human"
+          }
+        ]
+      },
+      "expected_tool": "address_list",
+      "category": "simple_list",
+      "mode": "autonomous"
+    },
+    {
+      "name": "Example 2: Create address object",
+      "input": {
+        "messages": [
+          {
+            "content": "Create address object web-server at 192.168.1.100",
+            "type": "human"
+          }
+        ]
+      },
+      "expected_tool": "address_create",
+      "category": "crud_create",
+      "mode": "autonomous"
+    },
+    {
+      "name": "Example 3: Multi-step operation",
+      "input": {
+        "messages": [
+          {
+            "content": "Create address server1 at 10.1.1.1, then create address server2 at 10.1.1.2",
+            "type": "human"
+          }
+        ]
+      },
+      "expected_tools": ["address_create", "address_create"],
+      "category": "multi_step",
+      "mode": "autonomous"
+    },
+    {
+      "name": "Example 4: Error handling",
+      "input": {
+        "messages": [
+          {
+            "content": "Create address object bad-server at 999.999.999.999",
+            "type": "human"
+          }
+        ]
+      },
+      "expected_behavior": "error_handling",
+      "category": "error_case",
+      "mode": "autonomous"
+    },
+    {
+      "name": "Example 5: Workflow execution",
+      "input": {
+        "messages": [
+          {
+            "content": "workflow: simple_address",
+            "type": "human"
+          }
+        ]
+      },
+      "expected_steps": 2,
+      "category": "workflow",
+      "mode": "deterministic"
+    }
+  ],
+  "metadata": {
+    "description": "Template dataset for PAN-OS Agent evaluation",
+    "version": "1.0",
+    "created": "2025-01-08"
+  }
+}
+

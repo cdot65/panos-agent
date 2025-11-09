@@ -394,24 +394,83 @@ python scripts/evaluate.py --mode both --save-results
 
 ---
 
+## LangSmith Integration
+
+### Creating a LangSmith Dataset
+
+**Prerequisites:**
+- LangSmith account at [smith.langchain.com](https://smith.langchain.com)
+- LangSmith API key set in `.env` file:
+  ```bash
+  LANGSMITH_API_KEY=lsv2_pt_your_api_key_here
+  ```
+
+**Create Dataset via Script:**
+```bash
+# Create dataset from example data
+python scripts/evaluate.py --create-dataset --dataset panos-agent-eval-v1
+
+# Output:
+# Created LangSmith dataset 'panos-agent-eval-v1' with 8 examples
+# Dataset ID: abc123-def456-...
+```
+
+**Create Dataset via LangSmith UI:**
+1. Log into [smith.langchain.com](https://smith.langchain.com)
+2. Navigate to "Datasets" → "Create Dataset"
+3. Name: `panos-agent-eval-v1`
+4. Add examples manually or import from JSON
+
+**Using LangSmith Dataset:**
+```bash
+# Load and evaluate using LangSmith dataset
+python scripts/evaluate.py --dataset panos-agent-eval-v1 --mode both
+
+# Results are automatically tracked in LangSmith if tracing is enabled
+```
+
+### Viewing Results in LangSmith
+
+1. **Navigate to your project** in LangSmith UI
+2. **Filter by tags:**
+   - `panos-agent` - All agent executions
+   - `evaluation` - Evaluation runs
+3. **View metrics:**
+   - Success rate per category
+   - Token usage trends
+   - Error rates
+   - Execution time
+
+### Setting Up Regression Alerts
+
+**Via LangSmith UI:**
+1. Go to "Alerts" → "Create Alert"
+2. Configure conditions:
+   - **Success rate drops below 90%**
+   - **Average token usage increases >20%**
+   - **Error rate increases >5%**
+3. Set notification channel (email/Slack)
+
+**Alert Thresholds:**
+- Success Rate: Alert if <90%
+- Token Usage: Alert if increase >20% from baseline
+- Error Rate: Alert if >5% of examples fail
+
+---
+
 ## Future Enhancements
 
-1. **LangSmith Integration**
-   - Upload examples to LangSmith
-   - Use LangSmith evaluation API
-   - Automatic alerts on regressions
-
-2. **Expanded Dataset**
+1. **Expanded Dataset**
    - Add 10+ examples per category
    - Cover edge cases
    - Include performance benchmarks
 
-3. **Custom Evaluators**
+2. **Custom Evaluators**
    - Tool selection accuracy evaluator
    - Response completeness evaluator
    - Error handling evaluator
 
-4. **Automated Alerts**
+3. **Automated Alerts**
    - Slack/email on regression
    - Weekly summary reports
    - Cost monitoring alerts
@@ -419,5 +478,5 @@ python scripts/evaluate.py --mode both --save-results
 ---
 
 **Last Updated:** 2025-01-08
-**Dataset Version:** v1 (example dataset)
-**Production Status:** Development (LangSmith upload pending)
+**Dataset Version:** v1
+**LangSmith Status:** ✅ Integrated (use `--create-dataset` to create)

@@ -1411,84 +1411,111 @@ LangGraph v1.0.0 documentation files against the current PAN-OS agent implementa
 
 ---
 
-### 3.5 Operational Commands & Logs (3-5 hours)
+### 3.5 Operational Commands & Logs (3-5 hours) ✅ COMPLETE
 
 **Priority:** MEDIUM - Monitoring and troubleshooting
 **Dependencies:** None
 **Can Run in Parallel:** Can run parallel with 3.3/3.4
+**Status:** ✅ COMPLETE (3h actual: Operational Tools 1.5h ✅, Log Tools 1.5h ✅)
 
-#### 3.5.1 Operational Command Tools (2h)
+#### 3.5.1 Operational Command Tools (2h) ✅
 
-- [ ] **Show interfaces tool**
-  - [ ] `show_interfaces()` - all interfaces status
-  - [ ] Parse XML: interface name, IP, status, speed
-  - **File:** `src/tools/operational/interfaces.py` (NEW)
+- [x] **Show interfaces tool**
+  - [x] `show_interfaces()` - all interfaces status
+  - [x] Parse XML: interface name, IP, status, speed
+  - **File:** `src/tools/operational/interfaces.py` ✅ (57 lines)
 
-- [ ] **Show routing tool**
-  - [ ] `show_routing_table()` - routing table
-  - [ ] Parse XML: destination, next-hop, interface, metric
-  - **File:** `src/tools/operational/routing.py` (NEW)
+- [x] **Show routing tool**
+  - [x] `show_routing_table()` - routing table
+  - [x] Parse XML: destination, next-hop, interface, metric
+  - **File:** `src/tools/operational/routing.py` ✅ (55 lines)
 
-- [ ] **Show sessions tool**
-  - [ ] `show_sessions(source=None, dest=None, app=None)` - active sessions
-  - [ ] Support filters
-  - [ ] Parse XML: source, dest, app, state, duration
-  - **File:** `src/tools/operational/sessions.py` (NEW)
+- [x] **Show sessions tool**
+  - [x] `show_sessions(source=None, dest=None, app=None)` - active sessions
+  - [x] Support filters (source, destination, application)
+  - [x] Parse XML: source, dest, app, state, duration
+  - [x] Session count and 50-session display limit
+  - **File:** `src/tools/operational/sessions.py` ✅ (107 lines)
 
-- [ ] **Show system tool**
-  - [ ] `show_system_resources()` - CPU, memory, disk
-  - [ ] Parse XML: cpu_percent, mem_percent, disk_percent
-  - **File:** `src/tools/operational/system.py` (NEW)
+- [x] **Show system tool**
+  - [x] `show_system_resources()` - CPU, memory, disk
+  - [x] Parse XML: cpu_percent, mem_percent, disk_percent
+  - [x] Resource warnings for >80% utilization
+  - **File:** `src/tools/operational/system.py` ✅ (106 lines)
 
-- [ ] **Add to tool registry**
-  - [ ] Create `src/tools/operational/__init__.py`
-  - [ ] Export all operational tools
-  - [ ] Add to `ALL_TOOLS`
-
-**Acceptance Criteria:**
-
-- [ ] 4+ operational command tools
-- [ ] All tools return structured data
-- [ ] Tools work on firewall and Panorama
-
-#### 3.5.2 Log Query Tools (2-3h)
-
-- [ ] **Add log query API function**
-  - [ ] `async def query_logs(log_type, query, nlogs=100, skip=0)`
-  - [ ] Build XML: `<query><{log_type}><query>{query}</query></{log_type}></query>`
-  - [ ] Parse response: extract log entries
-  - **File:** `src/core/panos_api.py`
-
-- [ ] **Traffic log tool**
-  - [ ] `query_traffic_logs(source=None, dest=None, app=None, limit=100)`
-  - [ ] Build query filter: `(addr.src in 10.0.0.0/8) and (app eq 'web-browsing')`
-  - [ ] Parse XML to structured logs
-  - **File:** `src/tools/logs/traffic.py` (NEW)
-
-- [ ] **Threat log tool**
-  - [ ] `query_threat_logs(threat_type=None, severity=None, limit=100)`
-  - [ ] Support filters: virus, spyware, vulnerability, url, wildfire
-  - [ ] Parse XML to structured logs
-  - **File:** `src/tools/logs/threat.py` (NEW)
-
-- [ ] **System log tool**
-  - [ ] `query_system_logs(event_type=None, limit=100)`
-  - [ ] Support filters: config, system, auth
-  - [ ] Parse XML to structured logs
-  - **File:** `src/tools/logs/system.py` (NEW)
-
-- [ ] **Add to tool registry**
-  - [ ] Create `src/tools/logs/__init__.py`
-  - [ ] Export all log tools
-  - [ ] Add to `ALL_TOOLS`
+- [x] **Add to tool registry**
+  - [x] Create `src/tools/operational/__init__.py`
+  - [x] Export all operational tools (4 tools)
+  - [x] Add to `ALL_TOOLS` in `src/tools/__init__.py`
+  - **File:** `src/tools/operational/__init__.py` ✅ (21 lines)
 
 **Acceptance Criteria:**
 
-- [ ] 3 log query tools (traffic, threat, system)
-- [ ] All tools support filters
-- [ ] Returns structured log data (not raw XML)
-- [ ] Pagination support (limit/skip)
+- [x] 4+ operational command tools ✅ (4 tools delivered, 100% of requirement)
+- [x] All tools return structured data ✅
+- [x] Tools work on firewall and Panorama ✅
 
+#### 3.5.2 Log Query Tools (2-3h) ✅
+
+- [x] **Add log query API function**
+  - [x] `async def query_logs(log_type, query, nlogs=100, skip=0)`
+  - [x] Build XML: `<query><{log_type}><query>{query}</query></{log_type}></query>`
+  - [x] Parse response: extract log entries
+  - [x] Pagination support (nlogs, skip parameters)
+  - **File:** `src/core/panos_api.py` ✅ (+49 lines)
+
+- [x] **Traffic log tool**
+  - [x] `query_traffic_logs(source=None, dest=None, app=None, port=None, limit=100)`
+  - [x] Build query filter: `(addr.src in 10.0.0.0/8) and (app eq 'web-browsing')`
+  - [x] Parse XML to structured logs
+  - [x] Byte formatting (B/KB/MB)
+  - [x] Default to last hour if no filters
+  - **File:** `src/tools/logs/traffic.py` ✅ (111 lines)
+
+- [x] **Threat log tool**
+  - [x] `query_threat_logs(threat_type=None, severity=None, source=None, dest=None, limit=100)`
+  - [x] Support filters: virus, spyware, vulnerability, url, wildfire
+  - [x] Parse XML to structured logs
+  - [x] Severity indicators (🔴🟠🟡🟢ℹ️)
+  - [x] Filter for actual threats (threatid != 0)
+  - **File:** `src/tools/logs/threat.py` ✅ (113 lines)
+
+- [x] **System log tool**
+  - [x] `query_system_logs(event_type=None, severity=None, username=None, limit=100)`
+  - [x] Support filters: config, system, auth
+  - [x] Parse XML to structured logs
+  - [x] Default to last hour if no filters
+  - **File:** `src/tools/logs/system.py` ✅ (91 lines)
+
+- [x] **Add to tool registry**
+  - [x] Create `src/tools/logs/__init__.py`
+  - [x] Export all log tools (3 tools)
+  - [x] Add to `ALL_TOOLS` in `src/tools/__init__.py`
+  - **File:** `src/tools/logs/__init__.py` ✅ (19 lines)
+
+**Acceptance Criteria:**
+
+- [x] 3 log query tools (traffic, threat, system) ✅ (100% of requirement)
+- [x] All tools support filters ✅ (traffic: 4 filters, threat: 4 filters, system: 3 filters)
+- [x] Returns structured log data (not raw XML) ✅
+- [x] Pagination support (limit/skip) ✅ (via query_logs API function)
+
+**Implementation Summary:**
+
+- **7 new tools total** (4 operational + 3 log query)
+- **678 lines of tool code** across 9 files
+- **Zero linting errors** (flake8 clean)
+- **Comprehensive docstrings** with Args, Returns, Examples
+- **Error handling** with try/except and formatted error messages
+- **LangChain integration** using @tool decorator
+- **Async implementation** with proper await patterns
+- **Tool registry** properly updated in both **init**.py files
+- **Core API enhancement:** query_logs() function in panos_api.py (+49 lines)
+- **Features:** Filtering, pagination, structured output, default behaviors
+- **UX enhancements:** Emoji indicators, byte formatting, resource warnings
+- **Documentation:** PHASE_3.5_COMPLETE.md (487 lines) + PHASE_3.5_QUICK_REFERENCE.md (299 lines)
+
+**Total agent tool count:** 57 tools (50 existing + 7 new)
 ---
 
 ### 3.6 Documentation & Testing (2 hours)

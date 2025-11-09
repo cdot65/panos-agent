@@ -64,6 +64,64 @@ All existing code continues to work without modification:
 - Legacy `get_xpath()` method still works
 - All 83 original tests pass without modification
 
+## Operational Commands with Multi-Vsys
+
+Operational commands automatically scope to the selected vsys when running on multi-vsys firewalls. This ensures monitoring and troubleshooting operations are vsys-aware.
+
+### Available Operational Tools
+
+**Network Monitoring:**
+- `show_interfaces` - Display all network interfaces and their status
+- `show_routing_table` - Show routing table with all routes
+- `show_sessions` - Display active sessions with optional filters
+
+**System Monitoring:**
+- `show_system_resources` - Monitor CPU, memory, and disk usage
+
+### Examples with --vsys Flag
+
+```bash
+# Show interfaces in vsys2
+panos-agent run --vsys vsys2 -p "Show all network interfaces"
+
+# Show routing table in vsys3
+panos-agent run --vsys vsys3 -p "Show routing table"
+
+# Show active sessions in vsys2
+panos-agent run --vsys vsys2 -p "Show all active sessions"
+
+# Monitor system resources (not vsys-specific, but context-aware)
+panos-agent run --vsys vsys2 -p "Show system resources"
+
+# Show sessions with filters in vsys4
+panos-agent run --vsys vsys4 -p "Show sessions from source 10.4.0.5"
+```
+
+### Operational Command Behavior
+
+All operational commands respect the vsys context:
+
+1. **Interface Status**: Shows only interfaces assigned to the specified vsys
+2. **Routing Table**: Shows only routes for the specified vsys virtual router
+3. **Sessions**: Shows only sessions belonging to the specified vsys
+4. **System Resources**: Shows overall system resources (applies to all vsys)
+
+### Example: Troubleshooting Specific Vsys
+
+```bash
+# Check interfaces in problematic vsys
+panos-agent run --vsys vsys3 -p "Show all network interfaces and their status"
+
+# Check routing for connectivity issues
+panos-agent run --vsys vsys3 -p "Show routing table"
+
+# Check active sessions to see traffic
+panos-agent run --vsys vsys3 -p "Show all active sessions"
+
+# Filter sessions by application
+panos-agent run --vsys vsys3 -p "Show sessions for application web-browsing"
+```
+
 ## Supported Object Types
 
 Multi-vsys support covers all firewall object types:
@@ -210,6 +268,97 @@ panos-agent run -p "List address objects"
 panos-agent run -p "Create service http-8080 tcp 8080"
 ```
 
+## Cross-Vsys Operations
+
+### List Operations Across Multiple Vsys
+
+You can query objects in different vsys by running separate commands:
+
+```bash
+# List objects in vsys1
+panos-agent run --vsys vsys1 -p "List all address objects"
+
+# List objects in vsys2
+panos-agent run --vsys vsys2 -p "List all address objects"
+
+# List objects in vsys3
+panos-agent run --vsys vsys3 -p "List all address objects"
+```
+
+### Comparing Configurations
+
+Compare configurations between vsys:
+
+```bash
+# Show routing in vsys1
+panos-agent run --vsys vsys1 -p "Show routing table" > vsys1-routes.txt
+
+# Show routing in vsys2  
+panos-agent run --vsys vsys2 -p "Show routing table" > vsys2-routes.txt
+
+# Compare files
+diff vsys1-routes.txt vsys2-routes.txt
+```
+
+### Session Monitoring Across Vsys
+
+Monitor sessions in multiple vsys:
+
+```bash
+# Check sessions in tenant1's vsys
+panos-agent run --vsys vsys2 -p "Show active sessions for application ssl"
+
+# Check sessions in tenant2's vsys
+panos-agent run --vsys vsys3 -p "Show active sessions for application ssl"
+```
+
+## Integration with Other Features
+
+### Multi-Vsys + Operational Tools
+
+Operational tools work seamlessly with vsys selection:
+
+```bash
+# Show interfaces in specific vsys
+panos-agent run --vsys vsys2 -p "Show all network interfaces"
+
+# Check routing in specific vsys
+panos-agent run --vsys vsys3 -p "Show routing table"
+
+# Monitor sessions in specific vsys
+panos-agent run --vsys vsys4 -p "Show sessions from 10.4.0.0/16"
+```
+
+### Multi-Vsys + Streaming
+
+Real-time streaming works with vsys operations:
+
+```bash
+# Streaming enabled (default) - see progress
+panos-agent run --vsys vsys2 -p "Create address web-server at 10.2.1.100"
+# 🤖 Agent thinking...
+# 🔧 Executing tools...
+# ✅ Complete
+
+# Streaming disabled - wait for final result
+panos-agent run --vsys vsys2 -p "List address objects" --no-stream
+```
+
+### Multi-Vsys + Checkpointing
+
+Vsys context is preserved in conversation checkpoints:
+
+```bash
+# Start conversation with vsys2
+panos-agent run --vsys vsys2 -p "Create address server-1 at 10.2.1.1" --thread-id tenant1-session
+
+# Continue conversation (vsys2 context preserved)
+panos-agent run --vsys vsys2 -p "Create address server-2 at 10.2.1.2" --thread-id tenant1-session
+
+# Resume after failure
+panos-agent run --vsys vsys2 -p "Continue creating servers" --thread-id tenant1-session
+```
+
 ## Limitations and Future Enhancements
 
 ### Current Limitations
@@ -276,6 +425,64 @@ result = await create_address(
     type="ip-netmask"
 )
 # Automatically uses vsys from device_context
+```
+
+## Use Cases
+
+### Use Case 1: Multi-Tenant Firewall
+
+**Scenario**: Single firewall serving multiple customers (tenants).
+
+```bash
+# Configure tenant 1 (vsys1)
+panos-agent run --vsys vsys1 -p "Create address tenant1-server at 10.1.0.10"
+panos-agent run --vsys vsys1 -p "Create security rule allowing web traffic for tenant 1"
+
+# Configure tenant 2 (vsys2)
+panos-agent run --vsys vsys2 -p "Create address tenant2-server at 10.2.0.10"
+panos-agent run --vsys vsys2 -p "Create security rule allowing web traffic for tenant 2"
+
+# Monitor tenant 1 traffic
+panos-agent run --vsys vsys1 -p "Show active sessions"
+
+# Monitor tenant 2 traffic
+panos-agent run --vsys vsys2 -p "Show active sessions"
+```
+
+### Use Case 2: Department Segmentation
+
+**Scenario**: Separate network segments for different departments.
+
+```bash
+# Sales department (vsys2)
+panos-agent run --vsys vsys2 -p "Create address sales-crm at 10.10.1.50"
+panos-agent run --vsys vsys2 -p "Create security rule allowing sales applications"
+
+# Engineering department (vsys3)
+panos-agent run --vsys vsys3 -p "Create address eng-git-server at 10.20.1.100"
+panos-agent run --vsys vsys3 -p "Create security rule allowing development tools"
+
+# Check department routing
+panos-agent run --vsys vsys2 -p "Show routing table"  # Sales routing
+panos-agent run --vsys vsys3 -p "Show routing table"  # Engineering routing
+```
+
+### Use Case 3: Development vs Production
+
+**Scenario**: Separate vsys for dev/test and production environments.
+
+```bash
+# Production environment (vsys1)
+panos-agent run --vsys vsys1 -p "Create address prod-web-server at 10.100.1.10"
+panos-agent run --vsys vsys1 -p "Show all active sessions"
+
+# Development environment (vsys2)
+panos-agent run --vsys vsys2 -p "Create address dev-web-server at 10.200.1.10"
+panos-agent run --vsys vsys2 -p "Show all active sessions"
+
+# List configs to compare
+panos-agent run --vsys vsys1 -p "List all security policies" > prod-policies.txt
+panos-agent run --vsys vsys2 -p "List all security policies" > dev-policies.txt
 ```
 
 ## Validation and Quality

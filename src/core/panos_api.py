@@ -69,6 +69,10 @@ def build_xpath(
     """
     from src.core.panos_models import DeviceType
 
+    # Normalize object_type: convert underscores to hyphens for XML compatibility
+    # Allows tools to use Python naming (address_group) while using XML naming (address-group)
+    object_type = object_type.replace("_", "-")
+
     # Determine device type and context from device_context or defaults
     device_type = DeviceType.FIREWALL
     vsys = location  # Default to provided location
@@ -345,11 +349,22 @@ async def api_request(
         code = root.get("code", "")
 
         logger.debug(f"API response: status={status}, code={code}")
+        if status != "success":
+            logger.debug(f"Error response XML: {response.text}")
 
         # Check for errors
         if status != "success":
             msg_elem = root.find(".//msg")
-            message = msg_elem.text if msg_elem is not None else "Unknown error"
+            if msg_elem is not None:
+                # Try to extract message from nested <line> elements (common for validation errors)
+                lines = msg_elem.findall(".//line")
+                if lines:
+                    message = " | ".join(line.text.strip() if line.text else "" for line in lines)
+                else:
+                    # Fallback to direct text content
+                    message = msg_elem.text if msg_elem.text else "Unknown error"
+            else:
+                message = "Unknown error"
             raise PanOSAPIError(message, code=code, response=response.text)
 
         # Extract message if present
@@ -420,6 +435,7 @@ async def set_config(xpath: str, element: etree._Element, client: httpx.AsyncCli
     params = {"type": "config", "action": "set", "xpath": xpath}
 
     logger.debug(f"Setting config at {xpath}")
+    logger.debug(f"XML element: {xml_str}")
     return await api_request("POST", params, client, xml_data=xml_str)
 
 
@@ -454,6 +470,7 @@ async def edit_config(
     params = {"type": "config", "action": "edit", "xpath": xpath}
 
     logger.debug(f"Editing config at {xpath}")
+    logger.debug(f"XML element: {xml_str}")
     return await api_request("POST", params, client, xml_data=xml_str)
 
 

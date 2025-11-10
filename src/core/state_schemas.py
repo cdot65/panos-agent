@@ -5,10 +5,11 @@ Follows LangGraph best practices for state management.
 """
 
 import operator
-from typing import Annotated, Literal, Optional, Sequence, TypedDict
+from typing import Annotated, Literal, Optional, Sequence
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
+from typing_extensions import TypedDict
 
 # ============================================================================
 # Device Context

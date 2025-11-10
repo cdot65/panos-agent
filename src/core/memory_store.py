@@ -125,7 +125,7 @@ def _hash_xpath(xpath: str) -> str:
 # =============================================================================
 
 
-def cache_config(
+async def cache_config(
     hostname: str,
     xpath: str,
     xml_data: str,
@@ -146,7 +146,7 @@ def cache_config(
 
     Example:
         ```python
-        cache_config(
+        await cache_config(
             hostname="192.168.1.1",
             xpath="/config/devices/.../address/entry[@name='web-1']",
             xml_data="<entry name='web-1'><ip-netmask>10.0.0.1</ip-netmask></entry>",
@@ -176,13 +176,13 @@ def cache_config(
     )
 
     try:
-        store.put(namespace, cache_key, entry.to_dict())
+        await store.aput(namespace, cache_key, entry.to_dict())
         logger.debug(f"Cached config for xpath hash {cache_key[:8]}... (TTL={ttl}s)")
     except Exception as e:
         logger.error(f"Failed to cache config for {hostname}: {e}")
 
 
-def get_cached_config(
+async def get_cached_config(
     hostname: str,
     xpath: str,
     store: BaseStore,
@@ -202,14 +202,14 @@ def get_cached_config(
 
     Example:
         ```python
-        xml = get_cached_config("192.168.1.1", xpath, store)
+        xml = await get_cached_config("192.168.1.1", xpath, store)
         if xml:
             # Cache HIT - use cached data (no API call needed)
             logger.debug("Using cached configuration")
         else:
             # Cache MISS - fetch from firewall
             xml = await get_config(xpath, client)
-            cache_config(hostname, xpath, xml, store)
+            await cache_config(hostname, xpath, xml, store)
         ```
 
     Note:
@@ -224,7 +224,7 @@ def get_cached_config(
     cache_key = _hash_xpath(xpath)
 
     try:
-        result = store.get(namespace, cache_key)
+        result = await store.aget(namespace, cache_key)
         if not result:
             logger.debug(f"Cache MISS for xpath hash {cache_key[:8]}...")
             return None
@@ -254,7 +254,7 @@ def get_cached_config(
         return None
 
 
-def invalidate_cache(
+async def invalidate_cache(
     hostname: str,
     xpath: Optional[str] = None,
     store: BaseStore = None,
@@ -275,14 +275,14 @@ def invalidate_cache(
     Example:
         ```python
         # Invalidate specific object after update
-        invalidate_cache(
+        await invalidate_cache(
             "192.168.1.1",
             "/config/.../address/entry[@name='web-1']",
             store
         )
 
         # Invalidate all cached configs after commit
-        invalidate_cache("192.168.1.1", None, store)
+        await invalidate_cache("192.168.1.1", None, store)
         ```
 
     Note:
@@ -302,21 +302,21 @@ def invalidate_cache(
         if xpath is None:
             # Invalidate all cache entries for this hostname
             # Search and delete all entries in namespace
-            results = store.search(namespace, limit=1000)
+            results = await store.asearch(namespace, limit=1000)
             count = 0
             for result in results:
                 key = result.key if hasattr(result, "key") else None
                 if key:
-                    store.delete(namespace, key)
+                    await store.adelete(namespace, key)
                     count += 1
             logger.debug(f"Invalidated {count} cache entries for {hostname}")
             return count
         else:
             # Invalidate specific xpath
             cache_key = _hash_xpath(xpath)
-            result = store.get(namespace, cache_key)
+            result = await store.aget(namespace, cache_key)
             if result:
-                store.delete(namespace, cache_key)
+                await store.adelete(namespace, cache_key)
                 logger.debug(f"Invalidated cache for xpath hash {cache_key[:8]}...")
                 return 1
             return 0
@@ -331,7 +331,7 @@ def invalidate_cache(
 # =============================================================================
 
 
-def store_firewall_config(
+async def store_firewall_config(
     hostname: str,
     config_type: str,
     data: dict[str, Any],
@@ -375,7 +375,7 @@ def store_firewall_config(
     key = config_type
 
     try:
-        store.put(namespace, key, data)
+        await store.aput(namespace, key, data)
         logger.debug(
             f"Stored firewall config: {hostname}/{config_type} " f"(count={data.get('count', 0)})"
         )
@@ -383,7 +383,7 @@ def store_firewall_config(
         logger.error(f"Failed to store firewall config {hostname}/{config_type}: {e}")
 
 
-def retrieve_firewall_config(
+async def retrieve_firewall_config(
     hostname: str,
     config_type: str,
     store: BaseStore,
@@ -419,7 +419,7 @@ def retrieve_firewall_config(
     key = config_type
 
     try:
-        result = store.get(namespace, key)
+        result = await store.aget(namespace, key)
         if result:
             logger.debug(f"Retrieved firewall config: {hostname}/{config_type}")
             return result.value if hasattr(result, "value") else result
@@ -429,7 +429,7 @@ def retrieve_firewall_config(
         return None
 
 
-def store_workflow_execution(
+async def store_workflow_execution(
     workflow_name: str,
     execution_data: dict[str, Any],
     store: BaseStore,
@@ -478,7 +478,7 @@ def store_workflow_execution(
     key = execution_id
 
     try:
-        store.put(namespace, key, execution_data)
+        await store.aput(namespace, key, execution_data)
         logger.debug(
             f"Stored workflow execution: {workflow_name} "
             f"(id={execution_id}, status={execution_data.get('status')})"
@@ -487,7 +487,7 @@ def store_workflow_execution(
         logger.error(f"Failed to store workflow execution {workflow_name}/{execution_id}: {e}")
 
 
-def search_workflow_history(
+async def search_workflow_history(
     workflow_name: str,
     store: BaseStore,
     limit: int = 10,
@@ -520,7 +520,7 @@ def search_workflow_history(
 
     try:
         # Get more results than needed, then sort and limit
-        results = store.search(namespace, limit=limit * 10)  # Get more to sort properly
+        results = await store.asearch(namespace, limit=limit * 10)  # Get more to sort properly
         if not results:
             return []
 
@@ -541,7 +541,7 @@ def search_workflow_history(
         return []
 
 
-def get_firewall_operation_summary(
+async def get_firewall_operation_summary(
     hostname: str,
     store: BaseStore,
 ) -> dict[str, Any]:
@@ -574,7 +574,7 @@ def get_firewall_operation_summary(
     namespace = (NAMESPACE_FIREWALL_CONFIGS, sanitized_hostname)
 
     try:
-        results = store.search(namespace, limit=100)  # Get all config types
+        results = await store.asearch(namespace, limit=100)  # Get all config types
         if not results:
             return {
                 "total_objects": 0,

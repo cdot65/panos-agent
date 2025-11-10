@@ -26,11 +26,10 @@ def get_checkpoint_db_path() -> Path:
     return db_path
 
 
-def ensure_checkpoint_db_exists() -> None:
-    """Ensure checkpoint database directory exists."""
-    db_path = get_checkpoint_db_path()
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    logger.debug(f"Checkpoint database path: {db_path}")
+# Create checkpoint directory at module import time to avoid blocking calls in async context
+_CHECKPOINT_DB_PATH = get_checkpoint_db_path()
+_CHECKPOINT_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+logger.debug(f"Checkpoint database path: {_CHECKPOINT_DB_PATH}")
 
 
 def get_checkpointer() -> SqliteSaver:
@@ -49,17 +48,14 @@ def get_checkpointer() -> SqliteSaver:
         >>> checkpointer = get_checkpointer()
         >>> graph = workflow.compile(checkpointer=checkpointer)
     """
-    ensure_checkpoint_db_exists()
-    db_path = get_checkpoint_db_path()
-
     # Create SQLite connection for persistent storage
     # check_same_thread=False allows connection to be used across threads
-    conn = sqlite3.connect(str(db_path), check_same_thread=False)
+    conn = sqlite3.connect(str(_CHECKPOINT_DB_PATH), check_same_thread=False)
 
     # Create SqliteSaver instance with the connection
     checkpointer = SqliteSaver(conn=conn)
 
-    logger.info(f"Initialized persistent checkpointer: {db_path}")
+    logger.info(f"Initialized persistent checkpointer: {_CHECKPOINT_DB_PATH}")
     return checkpointer
 
 
@@ -76,14 +72,11 @@ async def get_async_checkpointer() -> AsyncSqliteSaver:
         >>> checkpointer = await get_async_checkpointer()
         >>> graph = workflow.compile(checkpointer=checkpointer)
     """
-    ensure_checkpoint_db_exists()
-    db_path = get_checkpoint_db_path()
-
     # Create async SQLite connection
-    conn = await aiosqlite.connect(str(db_path))
+    conn = await aiosqlite.connect(str(_CHECKPOINT_DB_PATH))
 
     # Create AsyncSqliteSaver instance with the connection
     checkpointer = AsyncSqliteSaver(conn=conn)
 
-    logger.info(f"Initialized async persistent checkpointer: {db_path}")
+    logger.info(f"Initialized async persistent checkpointer: {_CHECKPOINT_DB_PATH}")
     return checkpointer

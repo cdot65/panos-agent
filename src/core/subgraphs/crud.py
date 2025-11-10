@@ -191,6 +191,11 @@ async def validate_input(state: CRUDState) -> CRUDState:
     """
     from src.core.panos_xpath_map import PanOSXPathMap, validate_object_data
 
+    # Normalize object_type: convert underscores to hyphens BEFORE validation
+    # This allows tools to use Python naming (address_group) while validating XML naming
+    if "object_type" in state:
+        state = {**state, "object_type": state["object_type"].replace("_", "-")}
+
     logger.debug(f"Validating {state['operation_type']} for {state['object_type']}")
 
     # Check required fields
@@ -241,9 +246,17 @@ async def validate_input(state: CRUDState) -> CRUDState:
 
     # Validate object data with PAN-OS rules
     if state.get("data") and state["operation_type"] in ["create", "update"]:
+        # For updates, merge name from object_name if not in data (for validation)
+        validation_data = state["data"]
+        if state["operation_type"] == "update" and state.get("object_name"):
+            if "name" not in validation_data:
+                validation_data = {**validation_data, "name": state["object_name"]}
+
         # Normalize object type (remove hyphens for validation)
         normalized_type = state["object_type"].replace("-", "_")
-        is_valid, error = validate_object_data(normalized_type, state["data"])
+        is_valid, error = validate_object_data(
+            normalized_type, validation_data, state["operation_type"]
+        )
         if not is_valid:
             logger.warning(f"Invalid object data: {error}")
             return {
@@ -379,6 +392,135 @@ def route_operation(
     return operation_map[state["operation_type"]]
 
 
+def _normalize_config_for_xml(object_type: str, config: dict[str, Any]) -> dict[str, Any]:
+    """Normalize config dict from firewall format to build_object_xml format.
+
+    Args:
+        object_type: Type of object
+        config: Configuration dictionary from firewall (via parse_xml_to_dict)
+
+    Returns:
+        Normalized dict suitable for build_object_xml
+    """
+    # For address objects, convert from {name: "x", "ip-netmask": "10.1.1.1"}
+    # to {name: "x", type: "ip-netmask", value: "10.1.1.1"}
+    if object_type == "address":
+        normalized = {"name": config.get("name", "")}
+
+        # Find the address type field
+        for addr_type in ["ip-netmask", "ip-range", "fqdn", "ip-wildcard"]:
+            if addr_type in config:
+                normalized["type"] = addr_type
+                normalized["value"] = config[addr_type]
+                break
+
+        # Copy other fields
+        if "description" in config:
+            normalized["description"] = config["description"]
+
+        # Handle tags (can be dict with member or list)
+        if "tag" in config:
+            tag_data = config["tag"]
+            if isinstance(tag_data, dict) and "member" in tag_data:
+                members = tag_data["member"]
+                normalized["tags"] = members if isinstance(members, list) else [members]
+            elif isinstance(tag_data, list):
+                normalized["tags"] = tag_data
+
+        return normalized
+
+    # For service objects, convert from {name: "x", protocol: {tcp: {port: "8080"}}}
+    # to {name: "x", protocol: "tcp", port: "8080"}
+    elif object_type == "service":
+        normalized = {"name": config.get("name", "")}
+
+        # Extract protocol and port from nested structure
+        if "protocol" in config and isinstance(config["protocol"], dict):
+            protocol_data = config["protocol"]
+            # Find which protocol (tcp/udp)
+            for proto in ["tcp", "udp"]:
+                if proto in protocol_data:
+                    normalized["protocol"] = proto
+                    # Extract port
+                    if isinstance(protocol_data[proto], dict) and "port" in protocol_data[proto]:
+                        normalized["port"] = protocol_data[proto]["port"]
+                    break
+
+        # Copy description
+        if "description" in config:
+            normalized["description"] = config["description"]
+
+        # Handle tags
+        if "tag" in config:
+            tag_data = config["tag"]
+            if isinstance(tag_data, dict) and "member" in tag_data:
+                members = tag_data["member"]
+                normalized["tags"] = members if isinstance(members, list) else [members]
+            elif isinstance(tag_data, list):
+                normalized["tags"] = tag_data
+
+        return normalized
+
+    # For address-group objects, normalize static/dynamic structure
+    elif object_type == "address-group":
+        normalized = {"name": config.get("name", "")}
+
+        # Handle static address groups: {static: {member: [...]}} -> {static_value: [...]}
+        if "static" in config:
+            static_data = config["static"]
+            if isinstance(static_data, dict) and "member" in static_data:
+                members = static_data["member"]
+                normalized["static_value"] = members if isinstance(members, list) else [members]
+
+        # Handle dynamic address groups: {dynamic: {filter: "..."}} -> {dynamic_filter: "..."}
+        if "dynamic" in config:
+            dynamic_data = config["dynamic"]
+            if isinstance(dynamic_data, dict) and "filter" in dynamic_data:
+                normalized["dynamic_filter"] = dynamic_data["filter"]
+
+        # Copy description
+        if "description" in config:
+            normalized["description"] = config["description"]
+
+        # Handle tags
+        if "tag" in config:
+            tag_data = config["tag"]
+            if isinstance(tag_data, dict) and "member" in tag_data:
+                members = tag_data["member"]
+                normalized["tags"] = members if isinstance(members, list) else [members]
+            elif isinstance(tag_data, list):
+                normalized["tags"] = tag_data
+
+        return normalized
+
+    # For service-group objects, normalize members structure
+    elif object_type == "service-group":
+        normalized = {"name": config.get("name", "")}
+
+        # Extract members from nested structure
+        if "members" in config:
+            members_data = config["members"]
+            if isinstance(members_data, dict) and "member" in members_data:
+                members = members_data["member"]
+                normalized["members"] = members if isinstance(members, list) else [members]
+            elif isinstance(members_data, list):
+                normalized["members"] = members_data
+
+        # Handle tags
+        if "tag" in config:
+            tag_data = config["tag"]
+            if isinstance(tag_data, dict) and "member" in tag_data:
+                members = tag_data["member"]
+                normalized["tags"] = members if isinstance(members, list) else [members]
+            elif isinstance(tag_data, list):
+                normalized["tags"] = tag_data
+
+        return normalized
+
+    # For other object types, return as-is
+    return config
+
+
 def build_object_xml(object_type: str, data: dict[str, Any]) -> etree._Element:
     """Build XML element for PAN-OS object.
 
@@ -389,6 +531,9 @@ def build_object_xml(object_type: str, data: dict[str, Any]) -> etree._Element:
     Returns:
         lxml Element
     """
+    # Normalize object_type: convert underscores to hyphens for XML compatibility
+    object_type = object_type.replace("_", "-")
+
     name = data.get("name", "")
     entry = etree.Element("entry", name=name)
 
@@ -402,17 +547,19 @@ def build_object_xml(object_type: str, data: dict[str, Any]) -> etree._Element:
             desc_elem = etree.SubElement(entry, "description")
             desc_elem.text = data["description"]
 
-        if data.get("tags"):
+        # Handle tags (accept both "tag" and "tags")
+        tags = data.get("tags") or data.get("tag")
+        if tags:
             tag_elem = etree.SubElement(entry, "tag")
-            for tag in data["tags"]:
+            for tag in tags:
                 member = etree.SubElement(tag_elem, "member")
                 member.text = tag
 
     elif object_type == "address-group":
         # Address group
-        if data.get("static_members"):
+        if data.get("static_value"):
             static_elem = etree.SubElement(entry, "static")
-            for member in data["static_members"]:
+            for member in data["static_value"]:
                 member_elem = etree.SubElement(static_elem, "member")
                 member_elem.text = member
 
@@ -424,6 +571,14 @@ def build_object_xml(object_type: str, data: dict[str, Any]) -> etree._Element:
         if data.get("description"):
             desc_elem = etree.SubElement(entry, "description")
             desc_elem.text = data["description"]
+
+        # Handle tags (accept both "tag" and "tags")
+        tags = data.get("tags") or data.get("tag")
+        if tags:
+            tag_elem = etree.SubElement(entry, "tag")
+            for tag in tags:
+                member = etree.SubElement(tag_elem, "member")
+                member.text = tag
 
     elif object_type == "service":
         # Service object
@@ -437,6 +592,14 @@ def build_object_xml(object_type: str, data: dict[str, Any]) -> etree._Element:
             desc_elem = etree.SubElement(entry, "description")
             desc_elem.text = data["description"]
 
+        # Handle tags (accept both "tag" and "tags")
+        tags = data.get("tags") or data.get("tag")
+        if tags:
+            tag_elem = etree.SubElement(entry, "tag")
+            for tag in tags:
+                member = etree.SubElement(tag_elem, "member")
+                member.text = tag
+
     elif object_type == "service-group":
         # Service group
         members_elem = etree.SubElement(entry, "members")
@@ -444,9 +607,13 @@ def build_object_xml(object_type: str, data: dict[str, Any]) -> etree._Element:
             member_elem = etree.SubElement(members_elem, "member")
             member_elem.text = member
 
-        if data.get("description"):
-            desc_elem = etree.SubElement(entry, "description")
-            desc_elem.text = data["description"]
+        # Handle tags (accept both "tag" and "tags")
+        tags = data.get("tags") or data.get("tag")
+        if tags:
+            tag_elem = etree.SubElement(entry, "tag")
+            for tag in tags:
+                member = etree.SubElement(tag_elem, "member")
+                member.text = tag
 
     elif object_type == "security-policy":
         # Security policy rule
@@ -560,7 +727,7 @@ async def create_object(state: CRUDState) -> CRUDState:
                 # Compare desired vs actual
                 from src.core.diff_engine import compare_configs
 
-                diff = compare_configs(state["data"], existing_config)
+                diff = compare_configs(state["data"], existing_config, state["object_type"])
 
                 if diff.is_identical():
                     # Unchanged - skip with detailed message
@@ -595,7 +762,10 @@ async def create_object(state: CRUDState) -> CRUDState:
                             "reason": "exists_with_changes",
                             "diff": diff.to_dict(),
                         },
-                        "message": f"⏭️  Skipped: {state['object_type']} '{object_name}' exists with different config\n{diff_summary}",
+                        "message": (
+                            f"⏭️  Skipped: {state['object_type']} '{object_name}' "
+                            f"exists with different config\n{diff_summary}"
+                        ),
                     }
             except Exception as e:
                 # If diff comparison fails, fall back to simple skip
@@ -608,7 +778,10 @@ async def create_object(state: CRUDState) -> CRUDState:
                         "object_type": state["object_type"],
                         "reason": "already_exists",
                     },
-                    "message": f"⏭️  Skipped: {state['object_type']} '{object_name}' already exists",
+                    "message": (
+                        f"⏭️  Skipped: {state['object_type']} '{object_name}' "
+                        "already exists"
+                    ),
                 }
         # Strict mode - fail if exists (only when explicitly requested)
         return {
@@ -635,7 +808,7 @@ async def create_object(state: CRUDState) -> CRUDState:
         # Create via set config
         await set_config(xpath, element, client)
 
-        logger.info(f"Successfully created {state['object_type']}: {object_name}")
+        logger.debug(f"Successfully created {state['object_type']}: {object_name}")
 
         # Invalidate cache after successful create
         store = state.get("store")
@@ -810,7 +983,7 @@ async def update_object(state: CRUDState) -> CRUDState:
 
         from src.core.diff_engine import compare_configs
 
-        diff = compare_configs(update_data, existing_config)
+        diff = compare_configs(update_data, existing_config, state["object_type"])
 
         # Skip if no changes detected
         if diff.is_identical():
@@ -836,13 +1009,32 @@ async def update_object(state: CRUDState) -> CRUDState:
         device_context = state.get("device_context")
         xpath = build_xpath(state["object_type"], name=object_name, device_context=device_context)
 
-        # Build XML element with updated data
-        element = build_object_xml(state["object_type"], update_data)
+        # Normalize existing config from firewall format to build_object_xml format
+        logger.debug(f"Existing config from firewall: {existing_config}")
+
+        # Extract entry from the response structure (API returns {'entry': {...}})
+        config_entry = existing_config.get("entry", {})
+
+        normalized_existing = _normalize_config_for_xml(state["object_type"], config_entry)
+        logger.debug(f"Normalized existing config: {normalized_existing}")
+
+        # Merge existing config with updates for complete object data
+        # Start with normalized existing (all current values), then overlay updates
+        merged_data = {**normalized_existing, **update_data}
+        logger.debug(f"Update data: {update_data}")
+        logger.debug(f"Merged data before name fix: {merged_data}")
+
+        # Ensure name is always set (tools pass it separately as object_name)
+        merged_data["name"] = object_name
+        logger.debug(f"Final merged data: {merged_data}")
+
+        # Build XML element with merged data (existing + updates)
+        element = build_object_xml(state["object_type"], merged_data)
 
         # Update via edit config
         await edit_config(xpath, element, client)
 
-        logger.info(f"Successfully updated {state['object_type']}: {object_name}")
+        logger.debug(f"Successfully updated {state['object_type']}: {object_name}")
 
         # Invalidate cache after successful update
         store = state.get("store")
@@ -932,7 +1124,7 @@ async def delete_object(state: CRUDState) -> CRUDState:
         # Delete config
         await delete_config(xpath, client)
 
-        logger.info(f"Successfully deleted {state['object_type']}: {state['object_name']}")
+        logger.debug(f"Successfully deleted {state['object_type']}: {state['object_name']}")
 
         # Invalidate cache after successful delete
         store = state.get("store")
@@ -991,12 +1183,15 @@ async def list_objects(state: CRUDState) -> CRUDState:
         # Get all objects
         result = await get_config(xpath, client)
 
-        # Parse entries
+        # Parse entries with full details
         object_list = []
         for entry in result.findall(".//entry"):
             name = entry.get("name", "")
             if name:
-                object_list.append({"name": name})
+                # Parse full entry to dict for complete object details
+                obj_dict = parse_xml_to_dict(entry)
+                obj_dict["name"] = name  # Ensure name is included
+                object_list.append(obj_dict)
 
         return {
             **state,
@@ -1058,13 +1253,113 @@ async def format_response(state: CRUDState) -> CRUDState:
                 # Check if diff available
                 if result.get("diff"):
                     change_count = len(result["diff"].get("changes", []))
-                    message = f"✅ Updated {state['object_type']}: {result.get('name')} ({change_count} changes)"
+                    message = (
+                        f"✅ Updated {state['object_type']}: {result.get('name')} "
+                        f"({change_count} changes)"
+                    )
                 else:
                     message = f"✅ Updated {state['object_type']}: {result.get('name')}"
             elif state["operation_type"] == "delete":
                 message = f"✅ Deleted {state['object_type']}: {result.get('name')}"
             elif state["operation_type"] == "list":
-                message = f"✅ Found {result.get('count')} {state['object_type']} objects"
+                count = result.get('count', 0)
+                objects = result.get('objects', [])
+
+                if count == 0:
+                    message = f"✅ No {state['object_type']} objects found"
+                else:
+                    # Format as table with object details
+                    lines = [f"✅ Found {count} {state['object_type']} objects:\n"]
+
+                    # Determine columns based on object type
+                    if state['object_type'] == 'address':
+                        lines.append(f"{'Name':<30} {'Type':<15} {'Value':<40}")
+                        lines.append("-" * 85)
+                        for obj in objects:
+                            name = obj.get('name', 'N/A')
+                            # Determine type and value
+                            if 'ip-netmask' in obj:
+                                obj_type = 'ip-netmask'
+                                value = obj['ip-netmask']
+                            elif 'ip-range' in obj:
+                                obj_type = 'ip-range'
+                                value = obj['ip-range']
+                            elif 'fqdn' in obj:
+                                obj_type = 'fqdn'
+                                value = obj['fqdn']
+                            else:
+                                obj_type = 'unknown'
+                                value = str(obj)[:40]
+
+                            lines.append(f"{name:<30} {obj_type:<15} {value:<40}")
+
+                    elif state['object_type'] == 'address-group':
+                        lines.append(f"{'Name':<30} {'Type':<15} {'Members':<50}")
+                        lines.append("-" * 95)
+                        for obj in objects:
+                            name = obj.get('name', 'N/A')
+                            # Determine type (static vs dynamic)
+                            if 'static' in obj:
+                                group_type = 'static'
+                                members = obj['static'].get('member', [])
+                                if isinstance(members, str):
+                                    members = [members]
+                                member_str = ', '.join(members[:3])
+                                if len(members) > 3:
+                                    member_str += f" (+{len(members)-3} more)"
+                            elif 'dynamic' in obj:
+                                group_type = 'dynamic'
+                                member_str = obj['dynamic'].get('filter', 'N/A')
+                            else:
+                                group_type = 'unknown'
+                                member_str = 'N/A'
+
+                            lines.append(f"{name:<30} {group_type:<15} {member_str:<50}")
+
+                    elif state['object_type'] == 'service':
+                        lines.append(f"{'Name':<30} {'Protocol':<15} {'Port':<20}")
+                        lines.append("-" * 65)
+                        for obj in objects:
+                            name = obj.get('name', 'N/A')
+                            protocol = obj.get('protocol', {})
+                            if 'tcp' in protocol:
+                                proto = 'tcp'
+                                port = protocol['tcp'].get('port', 'N/A')
+                            elif 'udp' in protocol:
+                                proto = 'udp'
+                                port = protocol['udp'].get('port', 'N/A')
+                            else:
+                                proto = 'unknown'
+                                port = 'N/A'
+
+                            lines.append(f"{name:<30} {proto:<15} {port:<20}")
+
+                    elif state['object_type'] == 'service-group':
+                        lines.append(f"{'Name':<30} {'Members':<60}")
+                        lines.append("-" * 90)
+                        for obj in objects:
+                            name = obj.get('name', 'N/A')
+                            members = obj.get('members', {}).get('member', [])
+                            if isinstance(members, str):
+                                members = [members]
+                            member_str = ', '.join(members[:4])
+                            if len(members) > 4:
+                                member_str += f" (+{len(members)-4} more)"
+
+                            lines.append(f"{name:<30} {member_str:<60}")
+
+                    else:
+                        # Generic format for other object types
+                        lines.append(f"{'Name':<40} {'Details':<60}")
+                        lines.append("-" * 100)
+                        for obj in objects:
+                            name = obj.get('name', 'N/A')
+                            # Remove name from dict copy for details
+                            details = {k: v for k, v in obj.items() if k != 'name'}
+                            details_str = str(details)[:60]
+                            lines.append(f"{name:<40} {details_str:<60}")
+
+                    message = "\n".join(lines)
         elif status == "skipped":
             reason = result.get("reason")
             if reason == "unchanged":

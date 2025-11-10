@@ -454,12 +454,23 @@ VALIDATION_RULES = {
         },
     },
     "service": {
-        "required_fields": ["name", "protocol"],
+        "required_fields": ["name", "protocol", "port"],
         "valid_protocols": ["tcp", "udp"],
         "field_validators": {
             "tcp_port": lambda v: _validate_port(v),
             "udp_port": lambda v: _validate_port(v),
         },
+    },
+    "address_group": {
+        "required_fields": ["name"],
+        "valid_types": ["static", "dynamic"],
+        # Must have either static_value (members) OR dynamic_filter
+        # static: list of address object names
+        # dynamic: filter expression for dynamic membership
+    },
+    "service_group": {
+        "required_fields": ["name", "members"],
+        # members: list of service object names
     },
     "security_policy": {
         "required_fields": [
@@ -549,12 +560,15 @@ def _validate_port(value: str) -> tuple[bool, Optional[str]]:
     return False, f"Invalid port format: {value}"
 
 
-def validate_object_data(object_type: str, data: dict) -> tuple[bool, Optional[str]]:
+def validate_object_data(
+    object_type: str, data: dict, operation_type: str = "create"
+) -> tuple[bool, Optional[str]]:
     """Validate object data against PAN-OS rules.
 
     Args:
         object_type: Type of object
         data: Object data dictionary
+        operation_type: Operation type (create, update, etc.). For updates, only name is required.
 
     Returns:
         Tuple of (is_valid, error_message)
@@ -566,6 +580,11 @@ def validate_object_data(object_type: str, data: dict) -> tuple[bool, Optional[s
 
     # Check required fields
     required = rules.get("required_fields", [])
+
+    # For updates, only require 'name' - other fields can be partial
+    if operation_type == "update":
+        required = ["name"]
+
     for field in required:
         if field not in data or not data[field]:
             return False, f"Missing required field: {field}"
@@ -595,6 +614,16 @@ def validate_object_data(object_type: str, data: dict) -> tuple[bool, Optional[s
             return (
                 False,
                 f"Invalid action: {data['action']}. Must be one of {rules['valid_actions']}",
+            )
+
+    # Special validation for address_group: must have either static_value OR dynamic_filter
+    if object_type == "address_group" and operation_type == "create":
+        has_static = "static_value" in data and data["static_value"]
+        has_dynamic = "dynamic_filter" in data and data["dynamic_filter"]
+        if not has_static and not has_dynamic:
+            return (
+                False,
+                "address_group must have either 'static_value' (members list) or 'dynamic_filter'",
             )
 
     return True, None

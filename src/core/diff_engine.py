@@ -86,7 +86,7 @@ class ConfigDiff:
         }
 
     def summary(self) -> str:
-        """Generate human-readable summary.
+        """Generate human-readable summary grouped by change type.
 
         Returns:
             Formatted string summarizing changes
@@ -94,13 +94,26 @@ class ConfigDiff:
         if self.is_identical():
             return f"No changes detected for {self.object_type} '{self.object_name}'"
 
+        # Group changes by type for better readability
+        modified = [c for c in self.changes if c.change_type == "modified"]
+        added = [c for c in self.changes if c.change_type == "added"]
+        removed = [c for c in self.changes if c.change_type == "removed"]
+
         summary = f"Changes detected for {self.object_type} '{self.object_name}':\n"
-        for change in self.changes:
-            if change.change_type == "modified":
+
+        # Show modified fields first (most important)
+        if modified:
+            for change in modified:
                 summary += f"  • {change.field}: {change.old_value} → {change.new_value}\n"
-            elif change.change_type == "added":
+
+        # Then added fields
+        if added:
+            for change in added:
                 summary += f"  + {change.field}: {change.new_value}\n"
-            elif change.change_type == "removed":
+
+        # Finally removed fields
+        if removed:
+            for change in removed:
                 summary += f"  - {change.field}: {change.old_value}\n"
 
         return summary.rstrip()
@@ -147,7 +160,7 @@ def _values_equal(val1: Any, val2: Any) -> bool:
     return val1 == val2
 
 
-def compare_configs(desired: dict, actual: dict) -> ConfigDiff:
+def compare_configs(desired: dict, actual: dict, object_type: str = None) -> ConfigDiff:
     """Compare two PAN-OS configurations at field level.
 
     Compares desired configuration against actual configuration and returns
@@ -157,6 +170,7 @@ def compare_configs(desired: dict, actual: dict) -> ConfigDiff:
     Args:
         desired: Desired configuration (what we want to apply)
         actual: Actual configuration (what exists on firewall)
+        object_type: Object type (address, service, etc.). If None, attempts to infer from config.
 
     Returns:
         ConfigDiff with list of changes
@@ -164,7 +178,7 @@ def compare_configs(desired: dict, actual: dict) -> ConfigDiff:
     Example:
         >>> desired = {"name": "web-1", "ip-netmask": "10.0.0.2/32"}
         >>> actual = {"name": "web-1", "ip-netmask": "10.0.0.1/32"}
-        >>> diff = compare_configs(desired, actual)
+        >>> diff = compare_configs(desired, actual, "address")
         >>> diff.summary()
         "Changes detected for address 'web-1':
           • ip-netmask: 10.0.0.1/32 → 10.0.0.2/32"
@@ -174,8 +188,14 @@ def compare_configs(desired: dict, actual: dict) -> ConfigDiff:
     # Get all fields from both configs
     all_fields = set(desired.keys()) | set(actual.keys())
 
-    # Ignore certain meta fields
-    ignore_fields = {"name", "@admin", "@dirtyId", "@time"}
+    # Ignore internal PAN-OS metadata fields
+    ignore_fields = {
+        "name",  # Object name (always preserved)
+        "@admin", "@dirtyId", "@time",  # XML attributes
+        "admin", "dirtyId", "time",  # Non-attribute versions
+        "count", "total-count",  # Count metadata
+        "entry",  # Entry wrapper elements
+    }
 
     for field in all_fields:
         if field in ignore_fields:
@@ -211,9 +231,12 @@ def compare_configs(desired: dict, actual: dict) -> ConfigDiff:
                     )
                 )
 
+    # Determine object type from parameter or infer from config
+    final_object_type = object_type or desired.get("@type", actual.get("@type", "unknown"))
+
     return ConfigDiff(
         object_name=desired.get("name", actual.get("name", "unknown")),
-        object_type=desired.get("@type", actual.get("@type", "unknown")),
+        object_type=final_object_type,
         changes=changes,
     )
 

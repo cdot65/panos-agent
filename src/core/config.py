@@ -126,17 +126,18 @@ Firewall commits can take 30-120 seconds depending on configuration size.
 """
 
 
-# Singleton instance
-_settings: Settings | None = None
+# Initialize settings singleton at module import time to avoid blocking file reads in async context
+# This loads .env file synchronously before any async operations begin
+_settings: Settings = Settings()
 
 
 def get_settings() -> Settings:
-    """Get or create settings singleton.
+    """Get settings singleton.
+
+    Settings are initialized at module import time to avoid blocking
+    I/O operations during async graph initialization.
 
     Returns:
-        Settings instance with environment variables loaded
+        Settings instance with environment variables loaded from .env
     """
-    global _settings
-    if _settings is None:
-        _settings = Settings()
     return _settings

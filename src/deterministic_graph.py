@@ -299,6 +299,49 @@ def prompt_user_for_parameters(missing_params: list[str], param_descriptions: di
     return collected
 
 
+def substitute_workflow_parameters(steps: list[dict], workflow_params: dict) -> list[dict]:
+    """Substitute collected parameters into workflow step params.
+
+    Maps workflow-level parameters to step-specific parameter names.
+    For web_server_setup:
+    - server_ip → step[0].params.value (address value)
+    - server_name → step[0].params.name (address name)
+    - http_port → step[1].params.port (HTTP service port)
+    - https_port → step[2].params.port (HTTPS service port)
+
+    Args:
+        steps: Workflow steps with default params
+        workflow_params: Collected parameters {server_ip: "...", server_name: "..."}
+
+    Returns:
+        Steps with substituted parameters
+    """
+    import copy
+
+    # Deep copy to avoid modifying original
+    substituted_steps = copy.deepcopy(steps)
+
+    # Parameter mapping for web_server_setup workflow
+    # This is workflow-specific logic - ideally would be in workflow definitions
+    if len(substituted_steps) >= 3:
+        # Step 0: Create address
+        if "server_name" in workflow_params and workflow_params["server_name"]:
+            substituted_steps[0]["params"]["name"] = workflow_params["server_name"]
+        if "server_ip" in workflow_params and workflow_params["server_ip"]:
+            substituted_steps[0]["params"]["value"] = workflow_params["server_ip"]
+
+        # Step 1: Create HTTP service
+        if "http_port" in workflow_params and workflow_params["http_port"]:
+            substituted_steps[1]["params"]["port"] = workflow_params["http_port"]
+
+        # Step 2: Create HTTPS service
+        if "https_port" in workflow_params and workflow_params["https_port"]:
+            substituted_steps[2]["params"]["port"] = workflow_params["https_port"]
+
+    logger.debug(f"Substituted parameters into {len(substituted_steps)} steps")
+    return substituted_steps
+
+
 async def validate_and_collect_parameters(state: DeterministicState) -> DeterministicState:
     """Validate extracted params and prompt user for missing required ones.
 
@@ -306,7 +349,7 @@ async def validate_and_collect_parameters(state: DeterministicState) -> Determin
         state: Current deterministic state
 
     Returns:
-        Updated state with workflow_parameters populated
+        Updated state with workflow_parameters populated and steps substituted
     """
     workflow_name = state.get("workflow_name")
 
@@ -349,21 +392,32 @@ async def validate_and_collect_parameters(state: DeterministicState) -> Determin
     # If no required params missing and all optional provided, we're good
     if not missing_required and not missing_optional:
         logger.info("All parameters provided, no collection needed")
-        return {"workflow_parameters": extracted_params}
+        final_params = extracted_params
+    else:
+        # Prompt user for missing parameters
+        params_to_collect = missing_required + missing_optional
 
-    # Prompt user for missing parameters
-    params_to_collect = missing_required + missing_optional
+        logger.info(f"Collecting {len(params_to_collect)} missing parameters from user")
 
-    logger.info(f"Collecting {len(params_to_collect)} missing parameters from user")
+        collected_params = prompt_user_for_parameters(params_to_collect, param_descriptions)
 
-    collected_params = prompt_user_for_parameters(params_to_collect, param_descriptions)
-
-    # Merge extracted and collected
-    final_params = {**extracted_params, **collected_params}
+        # Merge extracted and collected (filter out empty strings)
+        final_params = {**extracted_params}
+        for key, value in collected_params.items():
+            if value:  # Only use non-empty collected values
+                final_params[key] = value
 
     logger.info(f"Parameter collection complete: {len(final_params)} total parameters")
+    logger.debug(f"Final parameters: {final_params}")
 
-    return {"workflow_parameters": final_params}
+    # Substitute parameters into workflow steps
+    original_steps = state.get("workflow_steps", [])
+    substituted_steps = substitute_workflow_parameters(original_steps, final_params)
+
+    return {
+        "workflow_parameters": final_params,
+        "workflow_steps": substituted_steps,
+    }
 
 
 def route_after_load(state: DeterministicState) -> Literal["validate_parameters", "END"]:

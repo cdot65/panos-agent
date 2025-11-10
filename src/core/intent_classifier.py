@@ -159,15 +159,15 @@ Analyze the request and extract parameter values. For each parameter:
 - If not mentioned and optional: set to null
 
 Respond with valid JSON in this format:
-{
-  "parameters": {
+{{
+  "parameters": {{
     "param_name": "extracted_value",
     "other_param": null
-  },
+  }},
   "completeness": 0.85,
   "missing_required": ["param1", "param2"],
   "notes": "Brief notes about extraction"
-}
+}}
 
 The completeness score should be:
 - 1.0 if all required params found
@@ -399,6 +399,17 @@ async def extract_parameters(
         response = await llm.ainvoke(messages)
         content = response.content
 
+        # Handle list content (Anthropic content blocks)
+        if isinstance(content, list):
+            content = " ".join(
+                block.get("text", "") if isinstance(block, dict) else str(block)
+                for block in content
+            )
+
+        # Debug logging
+        logger.debug(f"Parameter extraction response type: {type(content)}, length: {len(content) if content else 0}")
+        logger.debug(f"Raw content: {repr(content)[:300]}")
+
         # Extract JSON from markdown if needed
         content = extract_json_from_markdown(content)
 
@@ -423,7 +434,8 @@ async def extract_parameters(
             }
 
     except Exception as e:
-        logger.error(f"Parameter extraction failed: {e}")
+        logger.error(f"Parameter extraction failed: {type(e).__name__}: {e}")
+        logger.exception("Full traceback:")
         raise
 
 

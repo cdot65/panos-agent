@@ -450,6 +450,15 @@ def _normalize_config_for_xml(object_type: str, config: dict[str, Any]) -> dict[
         if "description" in config:
             normalized["description"] = config["description"]
 
+        # Handle tags
+        if "tag" in config:
+            tag_data = config["tag"]
+            if isinstance(tag_data, dict) and "member" in tag_data:
+                members = tag_data["member"]
+                normalized["tags"] = members if isinstance(members, list) else [members]
+            elif isinstance(tag_data, list):
+                normalized["tags"] = tag_data
+
         return normalized
 
     # For address-group objects, normalize static/dynamic structure
@@ -500,6 +509,15 @@ def _normalize_config_for_xml(object_type: str, config: dict[str, Any]) -> dict[
         # Copy description
         if "description" in config:
             normalized["description"] = config["description"]
+
+        # Handle tags
+        if "tag" in config:
+            tag_data = config["tag"]
+            if isinstance(tag_data, dict) and "member" in tag_data:
+                members = tag_data["member"]
+                normalized["tags"] = members if isinstance(members, list) else [members]
+            elif isinstance(tag_data, list):
+                normalized["tags"] = tag_data
 
         return normalized
 

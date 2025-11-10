@@ -353,7 +353,7 @@ async def api_request(
         # Check for errors
         if status != "success":
             msg_elem = root.find(".//msg")
-            message = msg_elem.text if msg_elem is not None else "Unknown error"
+            message = msg_elem.text if msg_elem is not None and msg_elem.text else "Unknown error"
             raise PanOSAPIError(message, code=code, response=response.text)
 
         # Extract message if present
@@ -424,6 +424,7 @@ async def set_config(xpath: str, element: etree._Element, client: httpx.AsyncCli
     params = {"type": "config", "action": "set", "xpath": xpath}
 
     logger.debug(f"Setting config at {xpath}")
+    logger.debug(f"XML element: {xml_str}")
     return await api_request("POST", params, client, xml_data=xml_str)
 
 
@@ -458,6 +459,7 @@ async def edit_config(
     params = {"type": "config", "action": "edit", "xpath": xpath}
 
     logger.debug(f"Editing config at {xpath}")
+    logger.debug(f"XML element: {xml_str}")
     return await api_request("POST", params, client, xml_data=xml_str)
 
 

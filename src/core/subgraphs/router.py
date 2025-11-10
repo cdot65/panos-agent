@@ -51,7 +51,16 @@ async def parse_user_request(state: RouterState) -> RouterState:
         }
 
     last_message = messages[-1]
-    user_request = last_message.content if hasattr(last_message, "content") else str(last_message)
+    user_request_raw = last_message.content if hasattr(last_message, "content") else str(last_message)
+
+    # Handle list content (Anthropic content blocks)
+    if isinstance(user_request_raw, list):
+        user_request = " ".join(
+            block.get("text", "") if isinstance(block, dict) else str(block)
+            for block in user_request_raw
+        )
+    else:
+        user_request = user_request_raw
 
     logger.info(f"Parsing user request: {user_request[:100]}...")
 

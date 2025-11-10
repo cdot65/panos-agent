@@ -349,6 +349,8 @@ async def api_request(
         code = root.get("code", "")
 
         logger.debug(f"API response: status={status}, code={code}")
+        if status != "success":
+            logger.debug(f"Error response XML: {response.text}")
 
         # Check for errors
         if status != "success":

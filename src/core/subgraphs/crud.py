@@ -506,10 +506,6 @@ def _normalize_config_for_xml(object_type: str, config: dict[str, Any]) -> dict[
             elif isinstance(members_data, list):
                 normalized["members"] = members_data
 
-        # Copy description
-        if "description" in config:
-            normalized["description"] = config["description"]
-
         # Handle tags
         if "tag" in config:
             tag_data = config["tag"]
@@ -610,10 +606,6 @@ def build_object_xml(object_type: str, data: dict[str, Any]) -> etree._Element:
         for member in data.get("members", []):
             member_elem = etree.SubElement(members_elem, "member")
             member_elem.text = member
-
-        if data.get("description"):
-            desc_elem = etree.SubElement(entry, "description")
-            desc_elem.text = data["description"]
 
         # Handle tags (accept both "tag" and "tags")
         tags = data.get("tags") or data.get("tag")
@@ -1018,11 +1010,23 @@ async def update_object(state: CRUDState) -> CRUDState:
         xpath = build_xpath(state["object_type"], name=object_name, device_context=device_context)
 
         # Normalize existing config from firewall format to build_object_xml format
-        normalized_existing = _normalize_config_for_xml(state["object_type"], existing_config)
+        logger.debug(f"Existing config from firewall: {existing_config}")
+
+        # Extract entry from the response structure (API returns {'entry': {...}})
+        config_entry = existing_config.get("entry", {})
+
+        normalized_existing = _normalize_config_for_xml(state["object_type"], config_entry)
+        logger.debug(f"Normalized existing config: {normalized_existing}")
 
         # Merge existing config with updates for complete object data
         # Start with normalized existing (all current values), then overlay updates
         merged_data = {**normalized_existing, **update_data}
+        logger.debug(f"Update data: {update_data}")
+        logger.debug(f"Merged data before name fix: {merged_data}")
+
+        # Ensure name is always set (tools pass it separately as object_name)
+        merged_data["name"] = object_name
+        logger.debug(f"Final merged data: {merged_data}")
 
         # Build XML element with merged data (existing + updates)
         element = build_object_xml(state["object_type"], merged_data)

@@ -15,7 +15,6 @@ from src.core.subgraphs.crud import create_crud_subgraph
 async def service_group_create(
     name: str,
     members: list[str],
-    description: Optional[str] = None,
     tag: Optional[list[str]] = None,
     mode: str = "skip_if_exists",
 ) -> str:
@@ -24,7 +23,6 @@ async def service_group_create(
     Args:
         name: Name of the service group
         members: List of service object names to include in group
-        description: Optional description
         tag: Optional list of tags to apply
         mode: Error handling mode - "strict" (fail if exists) or "skip_if_exists" (skip if exists)
 
@@ -35,7 +33,6 @@ async def service_group_create(
         service_group_create(
             name="web-services",
             members=["web-http", "web-https"],
-            description="Web service group"
         )
         service_group_create(name="web-services", members=["web-http"], mode="skip_if_exists")
     """
@@ -46,8 +43,6 @@ async def service_group_create(
         "members": members,
     }
 
-    if description:
-        data["description"] = description
     if tag:
         data["tag"] = tag
 
@@ -101,7 +96,6 @@ async def service_group_read(name: str) -> str:
 async def service_group_update(
     name: str,
     members: Optional[list[str]] = None,
-    description: Optional[str] = None,
     tag: Optional[list[str]] = None,
 ) -> str:
     """Update an existing service group on PAN-OS firewall.
@@ -109,7 +103,6 @@ async def service_group_update(
     Args:
         name: Name of the service group to update
         members: New list of service object names (optional)
-        description: New description (optional)
         tag: New list of tags (optional)
 
     Returns:
@@ -123,8 +116,6 @@ async def service_group_update(
     data = {}
     if members:
         data["members"] = members
-    if description:
-        data["description"] = description
     if tag is not None:
         data["tag"] = tag
 

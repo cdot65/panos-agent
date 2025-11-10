@@ -130,7 +130,7 @@ async def call_agent(
     memory_context = ""
     try:
         # Get firewall operation summary
-        summary = get_firewall_operation_summary(hostname=settings.panos_hostname, store=store)
+        summary = await get_firewall_operation_summary(hostname=settings.panos_hostname, store=store)
 
         if summary and summary.get("total_objects", 0) > 0:
             # Build memory context string

@@ -541,7 +541,7 @@ def search_workflow_history(
         return []
 
 
-def get_firewall_operation_summary(
+async def get_firewall_operation_summary(
     hostname: str,
     store: BaseStore,
 ) -> dict[str, Any]:
@@ -574,7 +574,7 @@ def get_firewall_operation_summary(
     namespace = (NAMESPACE_FIREWALL_CONFIGS, sanitized_hostname)
 
     try:
-        results = store.search(namespace, limit=100)  # Get all config types
+        results = await store.asearch(namespace, limit=100)  # Get all config types
         if not results:
             return {
                 "total_objects": 0,

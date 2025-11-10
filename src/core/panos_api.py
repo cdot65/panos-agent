@@ -355,7 +355,16 @@ async def api_request(
         # Check for errors
         if status != "success":
             msg_elem = root.find(".//msg")
-            message = msg_elem.text if msg_elem is not None and msg_elem.text else "Unknown error"
+            if msg_elem is not None:
+                # Try to extract message from nested <line> elements (common for validation errors)
+                lines = msg_elem.findall(".//line")
+                if lines:
+                    message = " | ".join(line.text.strip() if line.text else "" for line in lines)
+                else:
+                    # Fallback to direct text content
+                    message = msg_elem.text if msg_elem.text else "Unknown error"
+            else:
+                message = "Unknown error"
             raise PanOSAPIError(message, code=code, response=response.text)
 
         # Extract message if present

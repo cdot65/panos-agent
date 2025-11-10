@@ -9,7 +9,7 @@ import logging
 from typing import Optional
 
 from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 
 from src.core.config import get_settings
@@ -184,7 +184,7 @@ async def classify_user_intent(user_input: str) -> dict:
 
         messages = [
             SystemMessage(content=INTENT_CLASSIFICATION_PROMPT),
-            ("user", user_input),
+            HumanMessage(content=user_input),
         ]
 
         response = await llm.ainvoke(messages)
@@ -263,6 +263,7 @@ async def match_workflow_semantic(intent: dict, workflows: dict) -> tuple[Option
 
         messages = [
             SystemMessage(content=prompt),
+            HumanMessage(content="Please analyze the user intent and provide the best workflow match."),
         ]
 
         response = await llm.ainvoke(messages)
@@ -344,6 +345,7 @@ async def extract_parameters(
 
         messages = [
             SystemMessage(content=prompt),
+            HumanMessage(content="Please extract the parameter values from the user request."),
         ]
 
         response = await llm.ainvoke(messages)

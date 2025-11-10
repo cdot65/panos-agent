@@ -356,8 +356,9 @@ def create_autonomous_graph(config: RunnableConfig) -> StateGraph:
     # Set store in context for subgraphs and tools to access
     set_store(store)
 
-    if checkpointer is None:
-        checkpointer = get_checkpointer()
+    # Note: checkpointer should be provided by caller (LangGraph Studio/CLI)
+    # If None, graph will work but won't persist state between invocations
+    # Don't create sync SqliteSaver here - it won't work in async context
 
     workflow = StateGraph(AutonomousState, context_schema=AgentContext)
 

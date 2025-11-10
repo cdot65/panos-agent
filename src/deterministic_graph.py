@@ -299,47 +299,98 @@ def prompt_user_for_parameters(missing_params: list[str], param_descriptions: di
     return collected
 
 
-def substitute_workflow_parameters(steps: list[dict], workflow_params: dict) -> list[dict]:
-    """Substitute collected parameters into workflow step params.
+def filter_and_substitute_workflow_steps(
+    steps: list[dict], workflow_params: dict, workflow_name: str
+) -> list[dict]:
+    """Filter steps based on collected params and substitute values.
 
-    Maps workflow-level parameters to step-specific parameter names.
+    Only includes steps where the user provided the necessary parameters.
+    This allows users to skip optional workflow components.
+
     For web_server_setup:
-    - server_ip → step[0].params.value (address value)
-    - server_name → step[0].params.name (address name)
-    - http_port → step[1].params.port (HTTP service port)
-    - https_port → step[2].params.port (HTTPS service port)
+    - Step 0 (address): Include if server_ip OR server_name provided
+    - Step 1 (HTTP service): Include if http_port provided
+    - Step 2 (HTTPS service): Include if https_port provided
+    - Step 3 (service group): Include if BOTH services are included
+    - Step 4 (list services): Always include (query operation)
 
     Args:
         steps: Workflow steps with default params
-        workflow_params: Collected parameters {server_ip: "...", server_name: "..."}
+        workflow_params: Collected parameters (empty strings filtered out)
+        workflow_name: Name of workflow for workflow-specific logic
 
     Returns:
-        Steps with substituted parameters
+        Filtered and substituted steps
     """
     import copy
 
     # Deep copy to avoid modifying original
-    substituted_steps = copy.deepcopy(steps)
+    all_steps = copy.deepcopy(steps)
+    filtered_steps = []
 
-    # Parameter mapping for web_server_setup workflow
-    # This is workflow-specific logic - ideally would be in workflow definitions
-    if len(substituted_steps) >= 3:
-        # Step 0: Create address
-        if "server_name" in workflow_params and workflow_params["server_name"]:
-            substituted_steps[0]["params"]["name"] = workflow_params["server_name"]
-        if "server_ip" in workflow_params and workflow_params["server_ip"]:
-            substituted_steps[0]["params"]["value"] = workflow_params["server_ip"]
+    # Track which services were created for service group logic
+    http_service_included = False
+    https_service_included = False
 
-        # Step 1: Create HTTP service
-        if "http_port" in workflow_params and workflow_params["http_port"]:
-            substituted_steps[1]["params"]["port"] = workflow_params["http_port"]
+    # Workflow-specific filtering and substitution
+    if workflow_name == "web_server_setup" and len(all_steps) >= 5:
+        # Step 0: Address - include if user provided server_ip or server_name
+        if workflow_params.get("server_ip") or workflow_params.get("server_name"):
+            step = all_steps[0]
+            if workflow_params.get("server_name"):
+                step["params"]["name"] = workflow_params["server_name"]
+            if workflow_params.get("server_ip"):
+                step["params"]["value"] = workflow_params["server_ip"]
+            filtered_steps.append(step)
+            logger.debug("Including address creation step")
+        else:
+            logger.info("Skipping address creation - no server_ip or server_name provided")
 
-        # Step 2: Create HTTPS service
-        if "https_port" in workflow_params and workflow_params["https_port"]:
-            substituted_steps[2]["params"]["port"] = workflow_params["https_port"]
+        # Step 1: HTTP service - include if user provided http_port
+        if workflow_params.get("http_port"):
+            step = all_steps[1]
+            step["params"]["port"] = workflow_params["http_port"]
+            filtered_steps.append(step)
+            http_service_included = True
+            logger.debug("Including HTTP service creation step")
+        else:
+            logger.info("Skipping HTTP service creation - no http_port provided")
 
-    logger.debug(f"Substituted parameters into {len(substituted_steps)} steps")
-    return substituted_steps
+        # Step 2: HTTPS service - include if user provided https_port
+        if workflow_params.get("https_port"):
+            step = all_steps[2]
+            step["params"]["port"] = workflow_params["https_port"]
+            filtered_steps.append(step)
+            https_service_included = True
+            logger.debug("Including HTTPS service creation step")
+        else:
+            logger.info("Skipping HTTPS service creation - no https_port provided")
+
+        # Step 3: Service group - only include if both services are being created
+        if http_service_included and https_service_included:
+            filtered_steps.append(all_steps[3])
+            logger.debug("Including service group creation step")
+        else:
+            logger.info("Skipping service group - not creating both HTTP and HTTPS services")
+
+        # Step 4: List services - always include (query operation)
+        filtered_steps.append(all_steps[4])
+        logger.debug("Including service list step")
+
+    else:
+        # For other workflows or if step count doesn't match, include all steps with substitution
+        logger.warning(
+            f"Unknown workflow '{workflow_name}' or unexpected step count, "
+            "including all steps without filtering"
+        )
+        filtered_steps = all_steps
+
+    logger.info(
+        f"Filtered workflow steps: {len(filtered_steps)}/{len(all_steps)} "
+        f"steps included based on provided parameters"
+    )
+
+    return filtered_steps
 
 
 async def validate_and_collect_parameters(state: DeterministicState) -> DeterministicState:
@@ -410,13 +461,15 @@ async def validate_and_collect_parameters(state: DeterministicState) -> Determin
     logger.info(f"Parameter collection complete: {len(final_params)} total parameters")
     logger.debug(f"Final parameters: {final_params}")
 
-    # Substitute parameters into workflow steps
+    # Filter steps based on collected parameters and substitute values
     original_steps = state.get("workflow_steps", [])
-    substituted_steps = substitute_workflow_parameters(original_steps, final_params)
+    filtered_steps = filter_and_substitute_workflow_steps(
+        original_steps, final_params, workflow_name
+    )
 
     return {
         "workflow_parameters": final_params,
-        "workflow_steps": substituted_steps,
+        "workflow_steps": filtered_steps,
     }
 
 

@@ -16,6 +16,36 @@ from src.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+
+def extract_json_from_markdown(content: str) -> str:
+    """Extract JSON from markdown code blocks.
+
+    Handles cases where LLM wraps JSON in ```json ... ``` or ``` ... ```
+
+    Args:
+        content: Raw LLM response (may contain markdown)
+
+    Returns:
+        Clean JSON string
+    """
+    if not content:
+        return content
+
+    content = content.strip()
+
+    # Remove ```json or ``` delimiters
+    if content.startswith("```"):
+        # Find first newline after opening ```
+        first_newline = content.find("\n")
+        if first_newline != -1:
+            content = content[first_newline + 1:]
+
+        # Remove closing ```
+        if content.endswith("```"):
+            content = content[:-3]
+
+    return content.strip()
+
 # Routing thresholds
 ROUTING_THRESHOLDS = {
     "deterministic_min": 0.80,  # Minimum confidence for workflow routing
@@ -190,6 +220,21 @@ async def classify_user_intent(user_input: str) -> dict:
         response = await llm.ainvoke(messages)
         content = response.content
 
+        # Handle list content (Anthropic content blocks)
+        if isinstance(content, list):
+            # Extract text from content blocks
+            content = " ".join(
+                block.get("text", "") if isinstance(block, dict) else str(block)
+                for block in content
+            )
+
+        # Debug: Log response type and content
+        logger.info(f"LLM response type: {type(content)}, length: {len(content) if content else 0}")
+        logger.debug(f"LLM response content: {repr(content)[:500]}")  # First 500 chars
+
+        # Extract JSON from markdown if needed
+        content = extract_json_from_markdown(content)
+
         # Parse JSON response
         try:
             intent_data = json.loads(content)
@@ -197,7 +242,7 @@ async def classify_user_intent(user_input: str) -> dict:
             return intent_data
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse intent classification JSON: {e}")
-            logger.debug(f"LLM response: {content}")
+            logger.error(f"Full LLM response: {content}")
             # Return fallback intent
             return {
                 "primary_intent": "unknown",
@@ -268,6 +313,9 @@ async def match_workflow_semantic(intent: dict, workflows: dict) -> tuple[Option
 
         response = await llm.ainvoke(messages)
         content = response.content
+
+        # Extract JSON from markdown if needed
+        content = extract_json_from_markdown(content)
 
         # Parse JSON response
         try:
@@ -350,6 +398,9 @@ async def extract_parameters(
 
         response = await llm.ainvoke(messages)
         content = response.content
+
+        # Extract JSON from markdown if needed
+        content = extract_json_from_markdown(content)
 
         # Parse JSON response
         try:

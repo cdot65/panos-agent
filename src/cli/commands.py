@@ -202,6 +202,115 @@ async def run_autonomous_async(
                     raise
 
 
+async def run_router_async(
+    prompt: str,
+    thread_id: str,
+    model_name: str,
+    temperature: float,
+    no_stream: bool,
+    recursion_limit: Optional[int] = None,
+):
+    """Async helper for router mode execution (intelligent routing)."""
+    from src.core.checkpoint_manager import get_async_checkpointer
+    from src.core.client import close_panos_client
+    from src.router_graph import create_router_graph
+
+    # Create graph with async checkpointer
+    checkpointer = await get_async_checkpointer()
+
+    try:
+        # Pass checkpointer via RunnableConfig for graph factory
+        factory_config = {"configurable": {"checkpointer": checkpointer}}
+        graph = create_router_graph(factory_config)
+
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+                "model_name": model_name,
+                "temperature": temperature,
+            },
+            "timeout": TIMEOUT_AUTONOMOUS,  # Use autonomous timeout (may route either way)
+            "recursion_limit": recursion_limit or 25,
+            "tags": ["panos-agent", "router", prompt[:50], "v0.1.0"],
+            "metadata": {
+                "mode": "router",
+                "prompt": prompt,
+                "thread_id": thread_id,
+                "timestamp": datetime.now().isoformat(),
+                "model": model_name,
+                "temperature": temperature,
+            },
+        }
+
+        if no_stream:
+            # Legacy invoke mode for CI/CD
+            result = await graph.ainvoke(
+                {"messages": [HumanMessage(content=prompt)]},
+                config=config,
+            )
+            last_message = result["messages"][-1]
+            console.print("\n[bold green]Response:[/bold green]")
+            console.print(
+                last_message.content if hasattr(last_message, "content") else str(last_message)
+            )
+            # Show routing decision
+            if "route_to" in result:
+                route_info = f"[dim]Routed to: {result['route_to']} mode"
+                if result.get("confidence_score"):
+                    route_info += f" (confidence: {result['confidence_score']:.2f})"
+                if result.get("matched_workflow"):
+                    route_info += f" [workflow: {result['matched_workflow']}]"
+                route_info += "[/dim]"
+                console.print(route_info)
+        else:
+            # Streaming mode with step-by-step progress
+            result = None
+            async for chunk in graph.astream(
+                {"messages": [HumanMessage(content=prompt)]},
+                config=config,
+                stream_mode="updates",
+            ):
+                # chunk is dict: {node_name: node_output}
+                for node_name, node_output in chunk.items():
+                    if node_name == "classify_request":
+                        route_to = node_output.get("route_to")
+                        if route_to:
+                            console.print(f"[yellow]🔀 Routing to {route_to} mode...[/yellow]")
+                    elif node_name == "execute_autonomous":
+                        console.print("[cyan]🤖 Executing in autonomous mode...[/cyan]")
+                    elif node_name == "execute_deterministic":
+                        workflow = node_output.get("matched_workflow", "unknown")
+                        console.print(f"[cyan]📋 Executing workflow: {workflow}...[/cyan]")
+                    # Keep last result
+                    result = node_output
+
+            # Print final response
+            if result and "messages" in result:
+                last_message = result["messages"][-1]
+                console.print("\n[bold green]Response:[/bold green]")
+                console.print(
+                    last_message.get("content", "")
+                    if isinstance(last_message, dict)
+                    else last_message.content
+                )
+
+        console.print(f"\n[dim]Thread ID: {thread_id}[/dim]")
+    finally:
+        # Clean up async resources
+        try:
+            await close_panos_client()
+        except RuntimeError as e:
+            if "Event loop is closed" not in str(e):
+                raise
+
+        if checkpointer and hasattr(checkpointer, "conn"):
+            try:
+                await checkpointer.conn.close()
+            except RuntimeError as e:
+                if "Event loop is closed" not in str(e):
+                    raise
+
+
 async def run_deterministic_async(
     prompt: str,
     thread_id: str,
@@ -320,7 +429,7 @@ async def run_deterministic_async(
 def run(
     prompt: str = typer.Option(..., "--prompt", "-p", help="User prompt for the agent"),
     mode: str = typer.Option(
-        "autonomous", "--mode", "-m", help="Agent mode (autonomous or deterministic)"
+        "router", "--mode", "-m", help="Agent mode (router, autonomous, or deterministic)"
     ),
     thread_id: Optional[str] = typer.Option(
         None, "--thread-id", "-t", help="Thread ID for conversation continuity"
@@ -357,9 +466,19 @@ def run(
     By default, shows real-time streaming progress. Use --no-stream for CI/CD.
 
     Examples:
+        # Router mode (intelligent routing) - DEFAULT, automatically selects best execution mode
+        panos-agent run -p "Set up web server"  # May route to workflow
+        panos-agent run -p "Show me all address objects"  # Routes to autonomous
+        panos-agent run -p "Create address for 10.1.1.50 named web-1"  # Intelligent routing
+
         # Autonomous mode (natural language) - with streaming
         panos-agent run -p "List all address objects" -m autonomous
-        panos-agent run -p "Create address object web-server at 10.1.1.100"
+        panos-agent run -p "Create address object web-server at 10.1.1.100" -m autonomous
+
+        # Deterministic mode (predefined workflows) - with step progress
+        panos-agent run -p "simple_address" -m deterministic
+        panos-agent run -p "web_server_setup" -m deterministic
+        panos-agent list-workflows  # See all available workflows
 
         # Model selection
         panos-agent run -p "List objects" --model haiku  # Fast, cheap
@@ -367,11 +486,6 @@ def run(
 
         # Temperature control
         panos-agent run -p "Generate names" --temperature 0.7  # More creative
-
-        # Deterministic mode (predefined workflows) - with step progress
-        panos-agent run -p "simple_address" -m deterministic
-        panos-agent run -p "web_server_setup" -m deterministic
-        panos-agent list-workflows  # See all available workflows
 
         # Logging control (default: WARNING for clean output)
         panos-agent run -p "List objects" --log-level INFO    # Verbose
@@ -406,7 +520,18 @@ def run(
 
         tid = thread_id or str(uuid.uuid4())
 
-        if mode == "autonomous":
+        if mode == "router":
+            asyncio.run(
+                run_router_async(
+                    prompt=prompt,
+                    thread_id=tid,
+                    model_name=model_name,
+                    temperature=temperature,
+                    no_stream=no_stream,
+                    recursion_limit=recursion_limit,
+                )
+            )
+        elif mode == "autonomous":
             asyncio.run(
                 run_autonomous_async(
                     prompt=prompt,
@@ -427,7 +552,7 @@ def run(
                 )
             )
         else:
-            console.print(f"[bold red]Error:[/bold red] Unknown mode '{mode}'")
+            console.print(f"[bold red]Error:[/bold red] Unknown mode '{mode}'. Use 'router', 'autonomous', or 'deterministic'")
             sys.exit(1)
 
     except TimeoutError:

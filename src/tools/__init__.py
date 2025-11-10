@@ -17,6 +17,7 @@ from src.tools.service_groups import SERVICE_GROUP_TOOLS
 from src.tools.services import SERVICE_TOOLS
 from src.tools.template_stacks import TEMPLATE_STACK_TOOLS
 from src.tools.templates import TEMPLATE_TOOLS
+from src.tools.workflow_discovery import discover_workflows, get_workflow_details
 
 # All tools combined for autonomous agent
 ALL_TOOLS = [
@@ -38,6 +39,9 @@ ALL_TOOLS = [
     # Orchestration tools (2 tools)
     crud_operation,  # Unified CRUD
     commit_changes,  # Commit workflow
+    # Workflow Discovery tools (2 tools)
+    discover_workflows,  # Search workflows by intent
+    get_workflow_details,  # Get workflow details
 ]
 
 __all__ = [
@@ -59,4 +63,7 @@ __all__ = [
     # Orchestration
     "crud_operation",
     "commit_changes",
+    # Workflow Discovery
+    "discover_workflows",
+    "get_workflow_details",
 ]

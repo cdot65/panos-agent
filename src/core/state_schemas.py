@@ -91,6 +91,47 @@ class DeterministicState(TypedDict):
     device_context: Optional[DeviceContext]
 
 
+class RouterState(TypedDict):
+    """State for intelligent router that chooses between autonomous and deterministic modes.
+
+    Analyzes user request and routes to appropriate execution pattern based on:
+    - Intent classification (what user wants to do)
+    - Workflow matching (similarity to predefined workflows)
+    - Parameter extraction (can we get needed params from input)
+    - Confidence scoring (how certain we are about the route)
+
+    Attributes:
+        messages: Conversation history
+        user_request: Original user input string
+        intent_classification: LLM's understanding of user intent
+            {
+                "primary_intent": "create|modify|delete|query|setup",
+                "target_objects": ["address", "service", "policy"],
+                "entities": {"ips": [...], "names": [...], "ports": [...]},
+                "multi_step": bool,
+                "keywords": [...]
+            }
+        matched_workflow: Workflow name if matched, None otherwise
+        workflow_alternatives: List of alternative workflow matches with scores
+        extracted_params: Parameters extracted from natural language for workflow
+        confidence_score: Overall confidence (0.0-1.0) in routing decision
+        route_to: Routing decision - "autonomous" or "deterministic"
+        routing_reason: Human-readable explanation of routing decision
+        device_context: Device information for context-aware operations (optional)
+    """
+
+    messages: Annotated[Sequence[BaseMessage], add_messages]
+    user_request: str
+    intent_classification: Optional[dict]
+    matched_workflow: Optional[str]
+    workflow_alternatives: Optional[list[dict]]
+    extracted_params: Optional[dict]
+    confidence_score: Optional[float]
+    route_to: Optional[Literal["autonomous", "deterministic"]]
+    routing_reason: Optional[str]
+    device_context: Optional[DeviceContext]
+
+
 # ============================================================================
 # Subgraph States (transactional operations)
 # ============================================================================

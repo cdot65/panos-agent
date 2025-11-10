@@ -26,6 +26,20 @@ WORKFLOWS = {
     "simple_address": {
         "name": "Simple Address Creation",
         "description": "Create a single address object with validation",
+        "keywords": ["address", "create", "single", "simple", "object"],
+        "intent_patterns": [
+            "create a single address",
+            "create an address for",
+            "add address object",
+            "make an address"
+        ],
+        "required_params": [],
+        "optional_params": ["name", "value", "description"],
+        "parameter_descriptions": {
+            "name": "Name of the address object (e.g., 'web-server-1')",
+            "value": "IP address or subnet (e.g., '10.1.1.100' or '192.168.1.0/24')",
+            "description": "Optional description of the address object"
+        },
         "steps": [
             {
                 "name": "Create address object",
@@ -50,6 +64,20 @@ WORKFLOWS = {
     "address_with_approval": {
         "name": "Address Creation with Approval",
         "description": "Create address object with human approval gate",
+        "keywords": ["address", "create", "approval", "gate", "review"],
+        "intent_patterns": [
+            "create address with approval",
+            "create address requiring approval",
+            "add address with review",
+            "create approved address"
+        ],
+        "required_params": [],
+        "optional_params": ["name", "value", "description"],
+        "parameter_descriptions": {
+            "name": "Name of the address object",
+            "value": "IP address or subnet",
+            "description": "Description of the address object"
+        },
         "steps": [
             {
                 "name": "Create address object",
@@ -79,6 +107,23 @@ WORKFLOWS = {
     "web_server_setup": {
         "name": "Web Server Setup",
         "description": "Create address and service objects for a web server",
+        "keywords": ["web", "server", "http", "https", "setup", "provision", "service"],
+        "intent_patterns": [
+            "set up a web server",
+            "create web server infrastructure",
+            "provision web services",
+            "configure web server",
+            "setup http server",
+            "deploy web application"
+        ],
+        "required_params": [],
+        "optional_params": ["server_ip", "server_name", "http_port", "https_port"],
+        "parameter_descriptions": {
+            "server_ip": "IP address of the web server (default: 10.10.1.100)",
+            "server_name": "Name for the address object (default: web-server-1)",
+            "http_port": "HTTP port number (default: 8080)",
+            "https_port": "HTTPS port number (default: 8443)"
+        },
         "steps": [
             {
                 "name": "Create web server address",
@@ -136,6 +181,20 @@ WORKFLOWS = {
     "multi_address_creation": {
         "name": "Multiple Address Creation",
         "description": "Create multiple address objects in sequence",
+        "keywords": ["multiple", "address", "batch", "create", "several", "many", "group"],
+        "intent_patterns": [
+            "create multiple addresses",
+            "create several address objects",
+            "add multiple servers",
+            "batch create addresses",
+            "create address group with members"
+        ],
+        "required_params": [],
+        "optional_params": ["addresses", "group_name"],
+        "parameter_descriptions": {
+            "addresses": "List of addresses to create with names and IPs",
+            "group_name": "Name for the address group containing all addresses"
+        },
         "steps": [
             {
                 "name": "Create DB server address",
@@ -187,6 +246,22 @@ WORKFLOWS = {
     "network_segmentation": {
         "name": "Network Segmentation Setup",
         "description": "Create addresses and groups for network segmentation",
+        "keywords": ["network", "segmentation", "subnet", "dmz", "internal", "vpn", "zones", "segment"],
+        "intent_patterns": [
+            "set up network segmentation",
+            "create network segments",
+            "configure network zones",
+            "segment the network",
+            "create dmz and internal networks",
+            "provision network infrastructure"
+        ],
+        "required_params": [],
+        "optional_params": ["dmz_subnet", "internal_subnet", "vpn_subnet"],
+        "parameter_descriptions": {
+            "dmz_subnet": "DMZ subnet CIDR (default: 10.100.0.0/24)",
+            "internal_subnet": "Internal subnet CIDR (default: 10.200.0.0/24)",
+            "vpn_subnet": "VPN subnet CIDR (default: 10.50.0.0/24)"
+        },
         "steps": [
             {
                 "name": "Create DMZ subnet address",
@@ -253,6 +328,22 @@ WORKFLOWS = {
     "security_rule_complete": {
         "name": "Complete Security Rule Setup",
         "description": "End-to-end security rule creation with all dependencies and approval gates",
+        "keywords": ["security", "rule", "policy", "complete", "end-to-end", "dependencies", "setup"],
+        "intent_patterns": [
+            "create complete security rule",
+            "set up security policy with all dependencies",
+            "create security rule end-to-end",
+            "provision security policy completely",
+            "full security rule setup"
+        ],
+        "required_params": [],
+        "optional_params": ["source_subnet", "destination_subnet", "services", "rule_name"],
+        "parameter_descriptions": {
+            "source_subnet": "Source subnet for the security rule",
+            "destination_subnet": "Destination subnet for the security rule",
+            "services": "List of services to allow (e.g., mysql, postgresql)",
+            "rule_name": "Name for the security policy rule"
+        },
         "steps": [
             {
                 "name": "Create source address object",
@@ -332,6 +423,22 @@ WORKFLOWS = {
     "complete_security_workflow": {
         "name": "Complete Security Policy Workflow with Commit",
         "description": "End-to-end: create objects, create policy, commit changes",
+        "keywords": ["complete", "security", "workflow", "policy", "commit", "end-to-end", "full"],
+        "intent_patterns": [
+            "complete security workflow",
+            "full security setup with commit",
+            "create security policy and commit",
+            "end-to-end security configuration",
+            "setup security with commit",
+            "deploy complete security policy"
+        ],
+        "required_params": [],
+        "optional_params": ["source_networks", "policy_name", "commit_description"],
+        "parameter_descriptions": {
+            "source_networks": "List of source network CIDRs",
+            "policy_name": "Name for the security policy rule",
+            "commit_description": "Description for the commit operation"
+        },
         "steps": [
             {
                 "name": "Create first source address",

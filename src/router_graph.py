@@ -231,18 +231,20 @@ async def execute_deterministic(state: RouterState, *, config: RunnableConfig) -
         # Include the workflow steps directly if we have them
         deterministic_state = {
             "messages": [workflow_invocation],
+            "workflow_name": workflow_name,
             "workflow_steps": workflow_def.get("steps", []),
             "current_step_index": 0,
             "step_results": [],
             "continue_workflow": True,
             "workflow_complete": False,
             "error_occurred": False,
+            "extracted_params": extracted_params,  # Pass extracted params for validation
+            "workflow_parameters": None,  # Will be populated by validation node
             "device_context": state.get("device_context"),
         }
 
-        # TODO: Inject extracted_params into workflow steps
-        # This would require modifying workflow steps with extracted parameters
-        # For now, workflows use their default parameters
+        # Deterministic graph will validate and collect any missing parameters
+        # before executing workflow steps
 
         # Invoke deterministic graph with subgraph config
         result = await deterministic_graph.ainvoke(deterministic_state, subgraph_config)

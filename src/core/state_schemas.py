@@ -72,22 +72,28 @@ class DeterministicState(TypedDict):
 
     Attributes:
         messages: Conversation history
+        workflow_name: Name of the workflow being executed
         workflow_steps: List of steps to execute [{step: "create_address", params: {...}}]
         current_step_index: Current step being executed
         step_results: Accumulated results from each step
         continue_workflow: Whether to continue to next step (LLM decision)
         workflow_complete: Whether all steps finished
         error_occurred: Whether any step failed critically
+        extracted_params: Parameters extracted by router from natural language
+        workflow_parameters: Final merged parameters (extracted + HITL collected)
         device_context: Device information for context-aware operations (optional)
     """
 
     messages: Annotated[Sequence[BaseMessage], add_messages]
+    workflow_name: Optional[str]
     workflow_steps: list[dict]
     current_step_index: int
     step_results: Annotated[list[dict], operator.add]
     continue_workflow: bool
     workflow_complete: bool
     error_occurred: bool
+    extracted_params: Optional[dict]
+    workflow_parameters: Optional[dict]
     device_context: Optional[DeviceContext]
 
 

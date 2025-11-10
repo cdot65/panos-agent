@@ -175,10 +175,14 @@ async def execute_workflow(state: DeterministicState, *, store: BaseStore) -> De
 
     # Invoke workflow subgraph (async)
     try:
+        # Get collected workflow parameters from validation node
+        workflow_params = state.get("workflow_parameters", {})
+        logger.info(f"Executing workflow with parameters: {workflow_params}")
+
         result = await workflow_subgraph.ainvoke(
             {
                 "workflow_name": workflow_name,
-                "workflow_params": {},  # Could extract from user message
+                "workflow_params": workflow_params,  # Use collected parameters
                 "steps": state["workflow_steps"],
                 "current_step": 0,
                 "step_outputs": [],
@@ -262,7 +266,107 @@ async def execute_workflow(state: DeterministicState, *, store: BaseStore) -> De
         }
 
 
-def route_after_load(state: DeterministicState) -> Literal["execute_workflow", "END"]:
+def prompt_user_for_parameters(missing_params: list[str], param_descriptions: dict) -> dict:
+    """Prompt user for missing workflow parameters via CLI.
+
+    Args:
+        missing_params: List of parameter names that need values
+        param_descriptions: Dict mapping param names to descriptions
+
+    Returns:
+        Dict of collected parameter values
+    """
+    from rich.console import Console
+    from rich.prompt import Prompt
+
+    console = Console()
+    collected = {}
+
+    console.print("\n📝 [bold]Workflow Parameter Collection[/bold]")
+    console.print("The following parameters are needed to execute this workflow:\n")
+
+    for param in missing_params:
+        description = param_descriptions.get(param, f"Value for {param}")
+
+        # Format prompt with description
+        prompt_text = f"[cyan]{param}[/cyan] ({description})"
+
+        # Collect value
+        value = Prompt.ask(prompt_text)
+        collected[param] = value
+
+    console.print("\n✅ Parameters collected!\n")
+    return collected
+
+
+async def validate_and_collect_parameters(state: DeterministicState) -> DeterministicState:
+    """Validate extracted params and prompt user for missing required ones.
+
+    Args:
+        state: Current deterministic state
+
+    Returns:
+        Updated state with workflow_parameters populated
+    """
+    workflow_name = state.get("workflow_name")
+
+    # If no workflow name, skip validation (shouldn't happen)
+    if not workflow_name:
+        logger.warning("No workflow name in state, skipping parameter validation")
+        return {"workflow_parameters": {}}
+
+    # Get workflow definition
+    workflow_def = WORKFLOWS.get(workflow_name)
+    if not workflow_def:
+        logger.warning(f"Workflow {workflow_name} not found, skipping parameter validation")
+        return {"workflow_parameters": {}}
+
+    # Get extracted parameters from router
+    extracted_params_raw = state.get("extracted_params", {})
+    extracted_params = extracted_params_raw.get("parameters", {}) if extracted_params_raw else {}
+
+    # Get workflow metadata
+    required_params = workflow_def.get("required_params", [])
+    optional_params = workflow_def.get("optional_params", [])
+    param_descriptions = workflow_def.get("parameter_descriptions", {})
+
+    logger.info(f"Validating parameters for workflow '{workflow_name}'")
+    logger.debug(f"Required: {required_params}, Optional: {optional_params}")
+    logger.debug(f"Extracted: {extracted_params}")
+
+    # Find missing required parameters
+    missing_required = [
+        p for p in required_params
+        if p not in extracted_params or not extracted_params.get(p) or extracted_params[p] == "not_provided"
+    ]
+
+    # Find missing optional parameters that might improve execution
+    missing_optional = [
+        p for p in optional_params
+        if p not in extracted_params or not extracted_params.get(p)
+    ]
+
+    # If no required params missing and all optional provided, we're good
+    if not missing_required and not missing_optional:
+        logger.info("All parameters provided, no collection needed")
+        return {"workflow_parameters": extracted_params}
+
+    # Prompt user for missing parameters
+    params_to_collect = missing_required + missing_optional
+
+    logger.info(f"Collecting {len(params_to_collect)} missing parameters from user")
+
+    collected_params = prompt_user_for_parameters(params_to_collect, param_descriptions)
+
+    # Merge extracted and collected
+    final_params = {**extracted_params, **collected_params}
+
+    logger.info(f"Parameter collection complete: {len(final_params)} total parameters")
+
+    return {"workflow_parameters": final_params}
+
+
+def route_after_load(state: DeterministicState) -> Literal["validate_parameters", "END"]:
     """Route based on whether workflow loaded successfully.
 
     Args:
@@ -273,7 +377,7 @@ def route_after_load(state: DeterministicState) -> Literal["execute_workflow", "
     """
     if state.get("error_occurred"):
         return END
-    return "execute_workflow"
+    return "validate_parameters"
 
 
 def create_deterministic_graph(config: RunnableConfig) -> StateGraph:
@@ -308,6 +412,7 @@ def create_deterministic_graph(config: RunnableConfig) -> StateGraph:
     # Add nodes
     workflow.add_node("initialize_device_context", initialize_device_context)
     workflow.add_node("load_workflow_definition", load_workflow_definition)
+    workflow.add_node("validate_parameters", validate_and_collect_parameters)
     workflow.add_node("execute_workflow", execute_workflow)
 
     # Add edges
@@ -319,10 +424,13 @@ def create_deterministic_graph(config: RunnableConfig) -> StateGraph:
         "load_workflow_definition",
         route_after_load,
         {
-            "execute_workflow": "execute_workflow",
+            "validate_parameters": "validate_parameters",
             END: END,
         },
     )
+
+    # After validation, proceed to execution
+    workflow.add_edge("validate_parameters", "execute_workflow")
 
     # End after execution
     workflow.add_edge("execute_workflow", END)

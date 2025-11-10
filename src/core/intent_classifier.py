@@ -170,11 +170,14 @@ async def classify_user_intent(user_input: str) -> dict:
     Raises:
         Exception: If classification fails (caller should handle)
     """
+    from src.core.config import AgentContext
+
     settings = get_settings()
+    context = AgentContext()  # Use default model settings
 
     try:
         llm = ChatAnthropic(
-            model=settings.model_name,
+            model=context.model_name,  # Use AgentContext.model_name
             temperature=0.0,  # Deterministic for classification
             api_key=settings.anthropic_api_key,
         )
@@ -229,7 +232,10 @@ async def match_workflow_semantic(intent: dict, workflows: dict) -> tuple[Option
     Raises:
         Exception: If matching fails (caller should handle)
     """
+    from src.core.config import AgentContext
+
     settings = get_settings()
+    context = AgentContext()  # Use default model settings
 
     try:
         # Prepare workflow summaries for LLM
@@ -245,7 +251,7 @@ async def match_workflow_semantic(intent: dict, workflows: dict) -> tuple[Option
             workflow_summaries.append(summary)
 
         llm = ChatAnthropic(
-            model=settings.model_name,
+            model=context.model_name,  # Use AgentContext.model_name
             temperature=0.0,
             api_key=settings.anthropic_api_key,
         )
@@ -311,7 +317,10 @@ async def extract_parameters(
     Raises:
         Exception: If extraction fails (caller should handle)
     """
+    from src.core.config import AgentContext
+
     settings = get_settings()
+    context = AgentContext()  # Use default model settings
 
     try:
         required_params = workflow_def.get("required_params", [])
@@ -319,7 +328,7 @@ async def extract_parameters(
         param_descriptions = workflow_def.get("parameter_descriptions", {})
 
         llm = ChatAnthropic(
-            model=settings.model_name,
+            model=context.model_name,  # Use AgentContext.model_name
             temperature=0.0,
             api_key=settings.anthropic_api_key,
         )

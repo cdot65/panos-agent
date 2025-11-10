@@ -298,7 +298,7 @@ async def store_operations(state: AutonomousState, *, store: BaseStore) -> Auton
         if tool_calls_found:
             for config_type, operations in operations_by_type.items():
                 # Retrieve existing config
-                existing_config = retrieve_firewall_config(hostname, config_type, store)
+                existing_config = await retrieve_firewall_config(hostname, config_type, store)
 
                 # Update with new operations
                 recent_ops = existing_config.get("recent_operations", []) if existing_config else []
@@ -315,7 +315,7 @@ async def store_operations(state: AutonomousState, *, store: BaseStore) -> Auton
                     count = max(0, count + creates - deletes)
 
                 # Store updated config
-                store_firewall_config(
+                await store_firewall_config(
                     hostname=hostname,
                     config_type=config_type,
                     data={

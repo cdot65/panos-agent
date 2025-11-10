@@ -201,7 +201,7 @@ async def execute_workflow(state: DeterministicState, *, store: BaseStore) -> De
 
         # Store workflow execution history
         try:
-            store_workflow_execution(
+            await store_workflow_execution(
                 workflow_name=workflow_name,
                 execution_data={
                     "workflow_name": workflow_name,
@@ -234,7 +234,7 @@ async def execute_workflow(state: DeterministicState, *, store: BaseStore) -> De
         logger.error(f"Workflow execution failed: {e}")
         # Store failed execution
         try:
-            store_workflow_execution(
+            await store_workflow_execution(
                 workflow_name=workflow_name,
                 execution_data={
                     "workflow_name": workflow_name,
